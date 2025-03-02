@@ -1,37 +1,29 @@
+// langbat/lib/screens/main/home/home_screen.dart (Riverpod 방식)
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:langarden_common/widgets/setting_screen.dart';
+import 'package:langarden_common/providers/theme_provider.dart';
 
-class HomeScreen extends StatelessWidget {
-  final ThemeMode currentThemeMode;
-  final ValueChanged<ThemeMode> onThemeChanged;
 
-  const HomeScreen({
-    Key? key,
-    required this.currentThemeMode,
-    required this.onThemeChanged,
-  }) : super(key: key);
+
+class HomeScreen extends ConsumerWidget {
+  const HomeScreen({Key? key}) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 현재 테마 상태를 전역에서 구독합니다.
+    final currentTheme = ref.watch(themeModeProvider);
+    // onThemeChanged는 전역 상태 업데이트 메서드로 대체됩니다.
     return Scaffold(
       appBar: AppBar(title: Text('홈')),
       body: Center(
         child: ElevatedButton(
           onPressed: () async {
-            // SettingsScreen을 열고 선택된 테마 값을 기다립니다.
-            final selectedTheme = await Navigator.push<ThemeMode>(
+            // SettingsScreen은 전역 상태를 사용하므로, 별도의 파라미터 없이 호출합니다.
+            await Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (_) => SettingsScreen(
-                  currentThemeMode: currentThemeMode,
-                  onThemeChanged: onThemeChanged,
-                ),
-              ),
+              MaterialPageRoute(builder: (_) => SettingsScreen()),
             );
-            // 반환된 값이 있으면 부모의 상태를 업데이트합니다.
-            if (selectedTheme != null) {
-              onThemeChanged(selectedTheme);
-            }
           },
           child: Text('테마 설정'),
         ),
