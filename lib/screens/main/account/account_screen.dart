@@ -1,23 +1,31 @@
 // lib/screens/main/account/account_screen.dart
-import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 import 'package:langarden_common/auth/auth_screen.dart';
-import 'package:langbat/screens/main/main_screen.dart'; // MainScreen이 있는 경로
+import 'package:langbat/screens/main/main_screen.dart';
+import 'package:langarden_common/auth/profile_update_screen.dart'; // 회원정보 수정 페이지
 
 
 class AccountScreen extends StatelessWidget {
   const AccountScreen({Key? key}) : super(key: key);
 
+  Stream<DocumentSnapshot<Map<String, dynamic>>> _userProfileStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      return FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots();
+    } else {
+      return const Stream.empty();
+    }
+  }
+
   Future<void> _logout(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
-    // 로그아웃 후 AuthScreen으로 전환 (onAuthSuccess 콜백은 임시로 아무 동작도 하지 않는 함수로 전달)
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (context) => AuthScreen(
           onAuthSuccess: (User user) {
-            // AuthScreen 내에서 로그인 성공 시 호출되는 콜백입니다.
-            // 여기에 원하는 동작을 정의할 수 있습니다.
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(builder: (context) => MainScreen()),
@@ -32,12 +40,57 @@ class AccountScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('계정')),
-      body: Center(
-        child: ElevatedButton(
-          onPressed: () => _logout(context),
-          child: const Text('로그아웃'),
-        ),
-      ),
+      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: _userProfileStream(),
+        builder: (context, snapshot) {
+    if (snapshot.connectionState == ConnectionState.waiting) {
+    return const Center(child: CircularProgressIndicator());
+    }
+    if (snapshot.hasError) {
+    return Center(child: Text('오류 발생: ${snapshot.error}'));
+    }
+    if (!snapshot.hasData || snapshot.data == null) {
+    return const Center(child: Text('사용자 정보를 찾을 수 없습니다.'));
+    }
+    final data = snapshot.data!;
+    return Padding(
+    padding: const EdgeInsets.all(16.0),
+    child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+    Text('이메일: ${data['email'] ?? '정보 없음'}', style: const TextStyle(fontSize: 16)),
+    const SizedBox(height: 8),
+    // 비밀번호는 표시할 수 없습니다.
+    Text('전화번호: ${data['phone'] ?? '정보 없음'}', style: const TextStyle(fontSize: 16)),
+    const SizedBox(height: 8),
+    Text('이름: ${data['name'] ?? '정보 없음'}', style: const TextStyle(fontSize: 16)),
+    const Spacer(),
+    Row(
+    mainAxisAlignment: MainAxisAlignment.center,
+    children: [
+    ElevatedButton(
+    onPressed: () {
+    Navigator.push(
+    context,
+    MaterialPageRoute(builder: (context) => ProfileUpdateScreen(user: FirebaseAuth.instance.currentUser!)),
     );
+    },
+    child: const Text('회원정보 수정'),
+    ),
+
+    const SizedBox(width: 20),
+    ElevatedButton(
+    onPressed: () => _logout(context),
+    child: const Text('로그아웃'),
+    ),
+    ],
+    ),
+    ],
+    ),
+    );
+    },
+    ),
+    );
+
   }
 }

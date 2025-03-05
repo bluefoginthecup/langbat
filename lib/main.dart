@@ -49,21 +49,26 @@ class LangbatApp extends ConsumerWidget {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode, // Riverpod에서 관리하는 테마 모드 사용
-        home: Builder(
-        builder: (context)
-    {
-      return AuthScreen(
-          onAuthSuccess: (User user) {
-            // 회원가입 또는 로그인 성공 시, MainScreen으로 전환합니다.
-            Future.microtask(() {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => MainScreen()),
+        builder: (context, child) {
+      return GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () {
+          FocusScope.of(context).unfocus();
+        },
+        child: child,
+      );
+    },
+    home: Builder(
+        builder: (context) {
+          return AuthScreen(
+              onAuthSuccess: (User user) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (context) => MainScreen()),
               );
             });
-          });
-  }
-  ));
+          }),
+    );
   }
 }
 
