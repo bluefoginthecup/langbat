@@ -1,0 +1,96 @@
+{
+  "project_info": {
+    "project_number": "979138882481",
+    "project_id": "langarden",
+    "storage_bucket": "langarden.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:979138882481:android:e08585fa7936e5ab54eb90",
+        "android_client_info": {
+          "package_name": "com.example.langarden"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "979138882481-f6kqojro3gk8vk6bjoc2sg591ou7rpnk.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.langarden",
+            "certificate_hash": "b7588d85d51e30b081e0a3821015d31d1fb3f8ae"
+          }
+        },
+        {
+          "client_id": "979138882481-2eh5btm7abuismchomnn7iaueocm294v.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAHyzlKooyLV20wDCZT6ocmJarjTONAObQ"
+        },
+        {
+          "current_key": "AIzaSyB2vf8GRGxnLQPKhHmi88Ni2vnyRRZXjH4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "979138882481-2eh5btm7abuismchomnn7iaueocm294v.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "979138882481-ubhcanhmf381b7c5p5oilkhmk8fbebs6.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.langarden"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:979138882481:android:d5e5d3191fc7426b54eb90",
+        "android_client_info": {
+          "package_name": "com.example.langbat"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "979138882481-2eh5btm7abuismchomnn7iaueocm294v.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAHyzlKooyLV20wDCZT6ocmJarjTONAObQ"
+        },
+        {
+          "current_key": "AIzaSyB2vf8GRGxnLQPKhHmi88Ni2vnyRRZXjH4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "979138882481-2eh5btm7abuismchomnn7iaueocm294v.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "979138882481-ubhcanhmf381b7c5p5oilkhmk8fbebs6.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.langarden"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
