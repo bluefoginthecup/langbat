@@ -4,27 +4,22 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class VerbDetailInputScreen extends StatefulWidget {
-  final String verb;     // 동사 원형 (예: "hablar")
-  final String meaning;  // 동사의 기본 뜻 (예: "말하다")
+  final String verb;     // 기존 동사 원형 (예: "hablar")
+  final String meaning;  // 동사의 뜻 (예: "말하다")
 
-  const VerbDetailInputScreen({
-    Key? key,
-    required this.verb,
-    required this.meaning,
-  }) : super(key: key);
+  const VerbDetailInputScreen({Key? key, required this.verb, required this.meaning}) : super(key: key);
 
   @override
   _VerbDetailInputScreenState createState() => _VerbDetailInputScreenState();
 }
 
 class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
-  // 기존 시제별 컨트롤러
+  // 동사원형을 수정할 수 있는 컨트롤러 추가
+  late TextEditingController _verbController;
   final TextEditingController _presentController = TextEditingController();
   final TextEditingController _preteriteController = TextEditingController();
   final TextEditingController _imperfectController = TextEditingController();
   final TextEditingController _futureController = TextEditingController();
-
-  // 추가 필드 컨트롤러
   final TextEditingController _meaningController = TextEditingController();
   final TextEditingController _subjunctiveController = TextEditingController();
   final TextEditingController _imperativeController = TextEditingController();
@@ -38,51 +33,40 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
     return order.map((key) => conjugationMap[key] ?? "").join(', ');
   }
 
-  // 콤마(,)로 구분된 문자열을 리스트로 변환하는 함수
+  // 콤마로 구분된 문자열을 리스트로 변환하는 함수
   List<String> _parseConjugation(String input) =>
       input.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
 
-  // Firestore에서 저장된 데이터를 불러와 컨트롤러에 채워 넣는 함수 (초기 로드)
+  // Firestore에서 저장된 데이터를 불러와 컨트롤러에 채워 넣는 함수
   Future<void> _loadVerbDetails() async {
-    final doc = await FirebaseFirestore.instance
-        .collection('verbs')
-        .doc(widget.verb)
-        .get();
+    final doc = await FirebaseFirestore.instance.collection('verbs').doc(widget.verb).get();
     if (doc.exists) {
       final data = doc.data()!;
       setState(() {
-        // 기존 시제별 데이터
-        _presentController.text =
-            _mapToCommaSeparatedString(data['conjugations']['present']);
-        _preteriteController.text =
-            _mapToCommaSeparatedString(data['conjugations']['preterite']);
-        _imperfectController.text =
-            _mapToCommaSeparatedString(data['conjugations']['imperfect']);
-        _futureController.text =
-            _mapToCommaSeparatedString(data['conjugations']['future']);
-        // 추가 필드
+        // 동사원형 수정 컨트롤러에 초기값 설정
+        _verbController.text = data['verb'] ?? widget.verb;
         _meaningController.text = data['meaning'] ?? widget.meaning;
-        _subjunctiveController.text =
-        data['conjugations']['subjunctive'] != null
+        _presentController.text = _mapToCommaSeparatedString(data['conjugations']['present']);
+        _preteriteController.text = _mapToCommaSeparatedString(data['conjugations']['preterite']);
+        _imperfectController.text = _mapToCommaSeparatedString(data['conjugations']['imperfect']);
+        _futureController.text = _mapToCommaSeparatedString(data['conjugations']['future']);
+        _subjunctiveController.text = data['conjugations']['subjunctive'] != null
             ? _mapToCommaSeparatedString(data['conjugations']['subjunctive'])
             : "";
-        _imperativeController.text =
-        data['conjugations']['imperative'] != null
+        _imperativeController.text = data['conjugations']['imperative'] != null
             ? _mapToCommaSeparatedString(data['conjugations']['imperative'])
             : "";
-        _beginnerExampleController.text =
-        data['examples'] != null ? data['examples']['beginner'] ?? "" : "";
-        _intermediateExampleController.text =
-        data['examples'] != null ? data['examples']['intermediate'] ?? "" : "";
-        _advancedExampleController.text =
-        data['examples'] != null ? data['examples']['advanced'] ?? "" : "";
+        _beginnerExampleController.text = data['examples']?['beginner'] ?? "";
+        _intermediateExampleController.text = data['examples']?['intermediate'] ?? "";
+        _advancedExampleController.text = data['examples']?['advanced'] ?? "";
       });
     }
   }
 
-  // 저장 함수: 모든 입력 필드를 Firestore에 저장
   Future<void> _saveVerbDetails() async {
     // 파싱
+    final newVerb = _verbController.text.trim();
+    final meaning = _meaningController.text.trim();
     final presentList = _parseConjugation(_presentController.text);
     final preteriteList = _parseConjugation(_preteriteController.text);
     final imperfectList = _parseConjugation(_imperfectController.text);
@@ -90,7 +74,6 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
     final subjunctiveList = _parseConjugation(_subjunctiveController.text);
     final imperativeList = _parseConjugation(_imperativeController.text);
 
-    // 각 시제별 인칭별 매핑 함수
     Map<String, dynamic> buildConjugationMap(List<String> list) {
       return {
         "yo": list.length > 0 ? list[0] : "",
@@ -102,42 +85,41 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
       };
     }
 
-    // 기존 시제 데이터
     Map<String, dynamic> conjugations = {
       "present": buildConjugationMap(presentList),
       "preterite": buildConjugationMap(preteriteList),
       "imperfect": buildConjugationMap(imperfectList),
       "future": buildConjugationMap(futureList),
-      // 추가 시제: 접속법, 명령법
       "subjunctive": buildConjugationMap(subjunctiveList),
       "imperative": buildConjugationMap(imperativeList),
     };
 
-    // 예문 데이터
     Map<String, dynamic> examples = {
       "beginner": _beginnerExampleController.text.trim(),
       "intermediate": _intermediateExampleController.text.trim(),
       "advanced": _advancedExampleController.text.trim(),
     };
 
-    // 저장할 데이터 구조
     Map<String, dynamic> data = {
-      "verb": widget.verb,
-      "meaning": _meaningController.text.trim(),
+      "verb": newVerb,
+      "meaning": meaning,
       "conjugations": conjugations,
       "examples": examples,
       "createdAt": FieldValue.serverTimestamp(),
     };
 
     try {
-      await FirebaseFirestore.instance
-          .collection('verbs')
-          .doc(widget.verb) // 동사원형을 문서 ID로 사용
-          .set(data);
+      // 만약 동사원형이 수정되었다면, 새 문서를 만들고 기존 문서를 삭제
+      if (newVerb != widget.verb) {
+        await FirebaseFirestore.instance.collection('verbs').doc(newVerb).set(data);
+        await FirebaseFirestore.instance.collection('verbs').doc(widget.verb).delete();
+      } else {
+        await FirebaseFirestore.instance.collection('verbs').doc(newVerb).set(data);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("동사 정보가 저장되었습니다.")),
       );
-      // 저장 후 페이지 새로고침: 최신 데이터를 불러와서 입력 필드에 반영
+      // 저장 후 최신 데이터를 다시 불러옵니다.
       await _loadVerbDetails();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -149,11 +131,13 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
   @override
   void initState() {
     super.initState();
+    _verbController = TextEditingController(text: widget.verb);
     _loadVerbDetails();
   }
 
   @override
   void dispose() {
+    _verbController.dispose();
     _presentController.dispose();
     _preteriteController.dispose();
     _imperfectController.dispose();
@@ -171,7 +155,7 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("${widget.verb} 동사 상세 정보"),
+        title: Text("${_verbController.text} 동사 상세 정보"),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -184,19 +168,28 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // 뜻 입력 (이미 전달된 값이 있다면 수정 가능하도록)
+        // 동사원형 수정 필드
+        TextField(
+          controller: _verbController,
+          decoration: const InputDecoration(
+            labelText: '동사 원형 (예: hablar)',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 10),
+        // 뜻 입력 필드
         TextField(
           controller: _meaningController,
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             labelText: '뜻 (예: 말하다)',
             border: OutlineInputBorder(),
           ),
         ),
         const SizedBox(height: 10),
-        // 기존 시제 입력 필드들
+        // 시제별 입력 필드
         TextField(
           controller: _presentController,
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             labelText: '현재 시제 (예: hablo, hablas, habla, hablamos, habláis, hablan)',
             border: OutlineInputBorder(),
           ),
@@ -204,7 +197,7 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
         const SizedBox(height: 10),
         TextField(
           controller: _preteriteController,
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             labelText: '과거 시제 (예: hablé, hablaste, habló, hablamos, hablasteis, hablaron)',
             border: OutlineInputBorder(),
           ),
@@ -212,7 +205,7 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
         const SizedBox(height: 10),
         TextField(
           controller: _imperfectController,
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             labelText: '불완료 시제 (예: hablaba, hablabas, hablaba, hablábamos, hablabais, hablaban)',
             border: OutlineInputBorder(),
           ),
@@ -220,7 +213,7 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
         const SizedBox(height: 10),
         TextField(
           controller: _futureController,
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             labelText: '미래 시제 (예: hablaré, hablarás, hablará, hablaremos, hablaréis, hablarán)',
             border: OutlineInputBorder(),
           ),
@@ -229,7 +222,7 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
         // 추가 시제: 접속법
         TextField(
           controller: _subjunctiveController,
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             labelText: '접속법 (예: hable, hables, hable, hablemos, habléis, hablen)',
             border: OutlineInputBorder(),
           ),
@@ -238,7 +231,7 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
         // 추가 시제: 명령법
         TextField(
           controller: _imperativeController,
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             labelText: '명령법 (예: habla, hable, hablemos, hablad, hablen)',
             border: OutlineInputBorder(),
           ),
@@ -247,7 +240,7 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
         // 예문 입력: 초급
         TextField(
           controller: _beginnerExampleController,
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             labelText: '초급 예문 (예: Acepto tu ayuda.)',
             border: OutlineInputBorder(),
           ),
@@ -256,7 +249,7 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
         // 예문 입력: 중급
         TextField(
           controller: _intermediateExampleController,
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             labelText: '중급 예문 (예: Cuando era niño, aceptaba todo sin preguntar.)',
             border: OutlineInputBorder(),
           ),
@@ -265,7 +258,7 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
         // 예문 입력: 고급
         TextField(
           controller: _advancedExampleController,
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             labelText: '고급 예문 (예: Es importante que aceptemos nuestras diferencias.)',
             border: OutlineInputBorder(),
           ),
