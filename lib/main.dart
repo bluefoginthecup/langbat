@@ -15,11 +15,11 @@ import 'package:langarden_common/theme.dart';
 import 'package:langarden_common/widgets/bottom_nav_bar.dart';
 import 'package:langarden_common/providers/theme_provider.dart';
 import 'package:langarden_common/auth/auth_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-
-
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
@@ -28,47 +28,57 @@ void main() async {
   } catch (e) {
     print("Firebase initialization error: $e");
   }
+
+  // SharedPreferences에서 autoLogin 설정 확인
+  final prefs = await SharedPreferences.getInstance();
+  final autoLogin = prefs.getBool('autoLogin') ?? false;
+  final user = FirebaseAuth.instance.currentUser;
+
   runApp(
     ProviderScope(
-      child: LangbatApp(),
+      child: LangbatApp(autoLogin: autoLogin, user: user),
     ),
   );
 }
 
 class LangbatApp extends ConsumerWidget {
+  final bool autoLogin;
+  final User? user;
+
+  const LangbatApp({Key? key, required this.autoLogin, this.user})
+      : super(key: key);
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Riverpod을 사용해 테마 상태를 구독합니다.
     final themeMode = ref.watch(themeModeProvider);
 
-    // 로그인 상태 등 다른 전역 상태도 여기서 구독할 수 있습니다.
-    bool isLoggedIn = true; // 실제 인증 로직으로 대체
-
     return MaterialApp(
+      navigatorKey: navigatorKey, // GlobalKey 할당
       title: AppConstants.appName,
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: themeMode, // Riverpod에서 관리하는 테마 모드 사용
-        builder: (context, child) {
-      return GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: () {
-          FocusScope.of(context).unfocus();
+      themeMode: themeMode,
+      builder: (context, child) {
+        return GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () {
+            FocusScope.of(context).unfocus();
+          },
+          child: child,
+        );
+      },
+      home: (autoLogin && user != null)
+          ? MainScreen()
+          : AuthScreen(
+        onAuthSuccess: (User user) async {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('autoLogin', true);
+          // navigatorKey를 통해 Navigator 작업 수행
+          navigatorKey.currentState?.pushReplacement(
+            MaterialPageRoute(builder: (_) => MainScreen()),
+          );
         },
-        child: child,
-      );
-    },
-    home: Builder(
-        builder: (context) {
-          return AuthScreen(
-              onAuthSuccess: (User user) {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => MainScreen()),
-              );
-            });
-          }),
+      ),
     );
   }
 }
-
