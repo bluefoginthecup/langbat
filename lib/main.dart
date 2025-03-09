@@ -17,6 +17,7 @@ import 'package:langarden_common/providers/theme_provider.dart';
 import 'package:langarden_common/auth/auth_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
