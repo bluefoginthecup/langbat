@@ -7,7 +7,11 @@ class VerbDetailInputScreen extends StatefulWidget {
   final String verb;     // 기존 동사 원형 (예: "hablar")
   final String meaning;  // 동사의 뜻 (예: "말하다")
 
-  const VerbDetailInputScreen({Key? key, required this.verb, required this.meaning}) : super(key: key);
+  const VerbDetailInputScreen({
+    Key? key,
+    this.verb='',
+    this.meaning='',
+  }) : super(key: key);
 
   @override
   _VerbDetailInputScreenState createState() => _VerbDetailInputScreenState();

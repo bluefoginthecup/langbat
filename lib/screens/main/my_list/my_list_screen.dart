@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'verb_list_screen.dart';
 import 'sentence_list_screen.dart';
 import 'word_list_screen.dart';
-import 'flashcard_set_screen.dart';
+import 'flashcard_set_list_screen.dart';
+import 'trash_screen.dart';
 
 class MyListScreen extends StatelessWidget {
   const MyListScreen({Key? key}) : super(key: key);
@@ -40,8 +41,13 @@ class MyListScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: () => _navigateTo(context, const FlashcardSetScreen()),
+              onPressed: () => _navigateTo(context, const FlashcardSetListScreen()),
               child: const Text("플래시카드 세트"),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => _navigateTo(context, const TrashScreen()),
+              child: const Text("휴지통"),
             ),
           ],
         ),

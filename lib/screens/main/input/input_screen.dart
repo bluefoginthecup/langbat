@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:langbat/screens/main/input/verb_bulk_input_screen.dart';
+import 'verb_bulk_input_screen.dart';
 import 'verb_simple_input_screen.dart'; // 동사 간단입력 화면 파일
 import 'sentence_simple_input_screen.dart'; // 문장 간단입력 화면 파일
 import 'word_simple_input_screen.dart'; // 단어 간단입력 화면 파일

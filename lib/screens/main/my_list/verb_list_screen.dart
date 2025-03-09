@@ -1,17 +1,168 @@
-// lib/screens/my_list/verb_list_screen.dart
+// lib/screens/main/my_list/verb_list_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:langbat/screens/main/input/verb_detail_input_screen.dart'; // 실제 파일 경로에 맞게 수정하세요
+import '../input/verb_detail_input_screen.dart' show VerbDetailInputScreen;
+import 'package:langarden_common/widgets/multi_select_actions.dart';
+import '../cart/cart_screen.dart';
 
-class VerbListScreen extends StatelessWidget {
+class VerbListScreen extends StatefulWidget {
   const VerbListScreen({Key? key}) : super(key: key);
+
+  @override
+  _VerbListScreenState createState() => _VerbListScreenState();
+}
+
+class _VerbListScreenState extends State<VerbListScreen> {
+  bool multiSelectMode = false; // 멀티 선택 모드 활성화 여부
+  final Set<String> selectedIds = {}; // 선택된 동사의 문서 ID들을 저장
+
+  // 멀티 선택 모드 토글 함수
+  void toggleMultiSelect() {
+    setState(() {
+      multiSelectMode = !multiSelectMode;
+      if (!multiSelectMode) {
+        selectedIds.clear();
+      }
+    });
+  }
+
+  // 전체 선택 토글: docs 목록을 받아 전체 선택 혹은 해제
+  void toggleSelectAll(List<DocumentSnapshot> docs) {
+    setState(() {
+      if (selectedIds.length < docs.length) {
+        selectedIds.clear();
+        for (var doc in docs) {
+          selectedIds.add(doc.id);
+        }
+      } else {
+        selectedIds.clear();
+      }
+    });
+  }
+
+  // 선택된 동사들을 휴지통으로 보내는 함수 (기존 로직 사용)
+  Future<void> sendSelectedToTrash() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("휴지통으로 이동 확인"),
+        content: const Text("선택한 동사를 휴지통으로 보내시겠습니까?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("취소"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("확인"),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    try {
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+      final verbsRef = FirebaseFirestore.instance.collection('verbs');
+      final trashRef = FirebaseFirestore.instance.collection('trash');
+
+      for (var docId in selectedIds) {
+        final docSnapshot = await verbsRef.doc(docId).get();
+        if (docSnapshot.exists) {
+          final data = docSnapshot.data();
+          if (data != null) {
+            final trashData = {
+              "type": "verb",
+              "originalId": docId,
+              "data": data,
+              "deletedAt": FieldValue.serverTimestamp(),
+            };
+            final trashDocRef = trashRef.doc(docId);
+            batch.set(trashDocRef, trashData);
+            batch.delete(verbsRef.doc(docId));
+          }
+        }
+      }
+      await batch.commit();
+      setState(() {
+        selectedIds.clear();
+        multiSelectMode = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("선택한 동사가 휴지통으로 이동되었습니다.")),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("휴지통 이동 실패: $e")),
+      );
+    }
+  }
+
+  Future<void> addSelectedToCart() async {
+    final cartRef = FirebaseFirestore.instance.collection('cart');
+    final verbsRef = FirebaseFirestore.instance.collection('verbs');
+
+    try {
+      WriteBatch batch = FirebaseFirestore.instance.batch();
+
+      for (var docId in selectedIds) {
+        final docSnapshot = await verbsRef.doc(docId).get();
+        if (docSnapshot.exists) {
+          final data = docSnapshot.data();
+          batch.set(cartRef.doc(docId), {
+            "type": "verb",
+            "originalId": docId,
+            "data": data,
+            "addedAt": FieldValue.serverTimestamp(),
+          });
+        }
+      }
+
+      await batch.commit();
+      setState(() {
+        selectedIds.clear();
+        multiSelectMode = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("장바구니에 추가되었습니다.")),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("장바구니 추가 실패: $e")),
+      );
+    }
+  }
+
+
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text("동사리스트"),
-      ),
+        actions: [ IconButton(
+          icon: Icon(Icons.add),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const VerbDetailInputScreen()),
+            );
+          },
+        ),
+          IconButton(
+            icon: Icon(multiSelectMode ? Icons.cancel : Icons.checklist),
+            tooltip: multiSelectMode ? "멀티 선택 해제" : "멀티 선택 모드",
+            onPressed: toggleMultiSelect,
+          ),
+            IconButton(
+              icon: Icon(Icons.shopping_cart_checkout),
+              onPressed: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => CartScreen()));
+              },
+            ),
+        ],
+          ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('verbs').snapshots(),
         builder: (context, snapshot) {
@@ -25,33 +176,65 @@ class VerbListScreen extends StatelessWidget {
           if (docs.isEmpty) {
             return const Center(child: Text("저장된 동사가 없습니다."));
           }
-          return ListView.builder(
-            itemCount: docs.length,
-            itemBuilder: (context, index) {
-              final data = docs[index].data() as Map<String, dynamic>;
-              final verb = data["verb"] ?? "";
-              final meaning = data["meaning"] ?? "";
-              return ListTile(
-                title: Text(verb),
-                subtitle: Text(meaning),
-                onTap: () {
-                  // 동사 상세 정보를 확인하거나 수정하는 페이지로 전환하는 코드 추가 가능
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          VerbDetailInputScreen(
-                            verb: verb,
-                            meaning: meaning,
-                          ),
-                    ),
-                  );
-                },
-              );
-            },
+          return Column(
+            children: [
+              // 멀티 선택 모드가 활성화되면 상단에 MultiSelectActions 위젯 추가
+              if (multiSelectMode)
+              MultiSelectActions(
+                allSelected: selectedIds.length == docs.length,
+                onToggleSelectAll: () => toggleSelectAll(docs),
+                onTrash: selectedIds.isEmpty ? () {} : sendSelectedToTrash,
+                onCart: addSelectedToCart,
+              ),
+
+              Expanded(
+                child: ListView.builder(
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) {
+                    final doc = docs[index];
+                    final data = doc.data() as Map<String, dynamic>;
+                    final verb = data["verb"] ?? "";
+                    final meaning = data["meaning"] ?? "";
+                    final docId = doc.id;
+                    if (multiSelectMode) {
+                      return CheckboxListTile(
+                        title: Text(verb),
+                        subtitle: Text(meaning),
+                        value: selectedIds.contains(docId),
+                        onChanged: (bool? value) {
+                          setState(() {
+                            if (value == true) {
+                              selectedIds.add(docId);
+                            } else {
+                              selectedIds.remove(docId);
+                            }
+                          });
+                        },
+                      );
+                    } else {
+                      return ListTile(
+                        title: Text(verb),
+                        subtitle: Text(meaning),
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => VerbDetailInputScreen(
+                                verb: verb,
+                                meaning: meaning,
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    }
+                  },
+                ),
+              ),
+            ],
           );
         },
       ),
-    );
+      );
   }
 }
