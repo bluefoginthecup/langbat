@@ -193,12 +193,12 @@ class _VerbListScreenState extends State<VerbListScreen> {
                   itemBuilder: (context, index) {
                     final doc = docs[index];
                     final data = doc.data() as Map<String, dynamic>;
-                    final verb = data["verb"] ?? "";
+                    final text = data["text"] ?? "";
                     final meaning = data["meaning"] ?? "";
                     final docId = doc.id;
                     if (multiSelectMode) {
                       return CheckboxListTile(
-                        title: Text(verb),
+                        title: Text(text),
                         subtitle: Text(meaning),
                         value: selectedIds.contains(docId),
                         onChanged: (bool? value) {
@@ -213,14 +213,14 @@ class _VerbListScreenState extends State<VerbListScreen> {
                       );
                     } else {
                       return ListTile(
-                        title: Text(verb),
+                        title: Text(text),
                         subtitle: Text(meaning),
                         onTap: () {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (context) => VerbDetailInputScreen(
-                                verb: verb,
+                                text: text,
                                 meaning: meaning,
                               ),
                             ),

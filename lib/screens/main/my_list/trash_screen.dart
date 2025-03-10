@@ -118,8 +118,8 @@ class _TrashScreenState extends State<TrashScreen> {
             case "word":
               originalCollection = "words";
               break;
-            case "flashcardSet":
-              originalCollection = "flashcardSets";
+            case "flashcard_set":
+              originalCollection = "flashcard_sets";
               break;
             default:
               originalCollection = "others";

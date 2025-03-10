@@ -4,12 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class VerbDetailInputScreen extends StatefulWidget {
-  final String verb;     // 기존 동사 원형 (예: "hablar")
+  final String text;     // 기존 동사 원형 (예: "hablar")
   final String meaning;  // 동사의 뜻 (예: "말하다")
 
   const VerbDetailInputScreen({
     Key? key,
-    this.verb='',
+    this.text='',
     this.meaning='',
   }) : super(key: key);
 
@@ -43,12 +43,12 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
 
   // Firestore에서 저장된 데이터를 불러와 컨트롤러에 채워 넣는 함수
   Future<void> _loadVerbDetails() async {
-    final doc = await FirebaseFirestore.instance.collection('verbs').doc(widget.verb).get();
+    final doc = await FirebaseFirestore.instance.collection('verbs').doc(widget.text).get();
     if (doc.exists) {
       final data = doc.data()!;
       setState(() {
         // 동사원형 수정 컨트롤러에 초기값 설정
-        _verbController.text = data['verb'] ?? widget.verb;
+        _verbController.text = data['text'] ?? widget.text;
         _meaningController.text = data['meaning'] ?? widget.meaning;
         _presentController.text = _mapToCommaSeparatedString(data['conjugations']['present']);
         _preteriteController.text = _mapToCommaSeparatedString(data['conjugations']['preterite']);
@@ -69,7 +69,7 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
 
   Future<void> _saveVerbDetails() async {
     // 파싱
-    final newVerb = _verbController.text.trim();
+    final newText = _verbController.text.trim();
     final meaning = _meaningController.text.trim();
     final presentList = _parseConjugation(_presentController.text);
     final preteriteList = _parseConjugation(_preteriteController.text);
@@ -105,7 +105,7 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
     };
 
     Map<String, dynamic> data = {
-      "verb": newVerb,
+      "text": newText,
       "meaning": meaning,
       "conjugations": conjugations,
       "examples": examples,
@@ -114,11 +114,11 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
 
     try {
       // 만약 동사원형이 수정되었다면, 새 문서를 만들고 기존 문서를 삭제
-      if (newVerb != widget.verb) {
-        await FirebaseFirestore.instance.collection('verbs').doc(newVerb).set(data);
-        await FirebaseFirestore.instance.collection('verbs').doc(widget.verb).delete();
+      if (newText != widget.text) {
+        await FirebaseFirestore.instance.collection('verbs').doc(newText).set(data);
+        await FirebaseFirestore.instance.collection('verbs').doc(widget.text).delete();
       } else {
-        await FirebaseFirestore.instance.collection('verbs').doc(newVerb).set(data);
+        await FirebaseFirestore.instance.collection('verbs').doc(newText).set(data);
       }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("동사 정보가 저장되었습니다.")),
@@ -135,7 +135,7 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
   @override
   void initState() {
     super.initState();
-    _verbController = TextEditingController(text: widget.verb);
+    _verbController = TextEditingController(text: widget.text);
     _loadVerbDetails();
   }
 
