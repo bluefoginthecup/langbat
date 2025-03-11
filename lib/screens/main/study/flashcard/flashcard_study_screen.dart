@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:langarden_common/widgets/flashcard_controls.dart';
+import 'package:langarden_common/widgets/flashcard_filter.dart';
 
 class FlashcardStudyScreen extends StatefulWidget {
   final List<Map<String, String>> flashcards;
@@ -25,6 +26,12 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
   Timer? _autoPlayTimer;
   final Duration _autoPlayInterval = const Duration(seconds: 2);
 
+
+  Set<String> _selectedPersons = {};
+  Set<String> _selectedTenses = {};
+  Set<String> _selectedExamples = {};
+
+
   @override
   void initState() {
     super.initState();
@@ -33,6 +40,8 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     _flutterTts.setVolume(1.0);
     _flutterTts.setPitch(1.0);
   }
+
+
 
   void _goToNextCard() {
     setState(() {
@@ -109,6 +118,26 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     });
   }
 
+
+  void _openFilterModal() async {
+    await showModalBottomSheet(
+      context: context,
+      builder: (_) => FlashcardFilter(
+        selectedPersons: _selectedPersons,
+        selectedTenses: _selectedTenses,
+        selectedExamples: _selectedExamples,
+        onFilterChanged: (persons, tenses, examples) {
+          setState(() {
+            _selectedPersons = persons;
+            _selectedTenses = tenses;
+            _selectedExamples = examples;
+          });
+        },
+      ),
+    );
+  }
+
+
   @override
   Widget build(BuildContext context) {
     if (_cards.isEmpty) {
@@ -159,6 +188,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
             onToggleShuffle: _toggleShuffle,
             onToggleTts: _toggleTts,
             onToggleBothSidesAuto: _toggleBothSidesAuto,
+            onOpenFilter: _openFilterModal,
           ),
         ],
       ),
