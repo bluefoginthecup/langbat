@@ -9,6 +9,7 @@ import 'package:langarden_common/widgets/multi_select_actions.dart';
 import '../study/flashcard/flashcard_set_edit_screen.dart';
 import 'package:langarden_common/utils/trash_manager.dart';
 import '../study/flashcard/flashcard_study_screen.dart';
+import 'package:langarden_common/widgets/icon_button.dart'; // ✅ 툴팁 적용된 아이콘 버튼 불러오기
 
 
 class FlashcardSetListScreen extends ConsumerStatefulWidget {

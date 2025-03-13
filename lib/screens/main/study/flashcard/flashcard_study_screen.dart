@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:langarden_common/widgets/flashcard_controls.dart';
 import 'package:langarden_common/widgets/flashcard_filter.dart';
+import 'package:langarden_common/widgets/icon_button.dart'; // ✅ `AppIconButton`을 불러오기
+
 
 class FlashcardStudyScreen extends StatefulWidget {
   final List<Map<String, String>> flashcards;
@@ -40,7 +42,6 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     _flutterTts.setVolume(1.0);
     _flutterTts.setPitch(1.0);
   }
-
 
 
   void _goToNextCard() {
@@ -118,25 +119,46 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     });
   }
 
+  /// ✅ 탭하면 앞/뒤(정답) 전환하는 함수 추가
+  void _toggleMeaning() {
+    setState(() {
+      _showMeaning = !_showMeaning; // 🔹 앞/뒤 토글
+    });
+  }
+
 
   void _openFilterModal() async {
     await showModalBottomSheet(
       context: context,
-      builder: (_) => FlashcardFilter(
-        selectedPersons: _selectedPersons,
-        selectedTenses: _selectedTenses,
-        selectedExamples: _selectedExamples,
-        onFilterChanged: (persons, tenses, examples) {
-          setState(() {
-            _selectedPersons = persons;
-            _selectedTenses = tenses;
-            _selectedExamples = examples;
-          });
-        },
-      ),
+      builder: (_) =>
+          FlashcardFilter(
+            selectedPersons: _selectedPersons,
+            selectedTenses: _selectedTenses,
+            selectedExamples: _selectedExamples,
+            onFilterChanged: (persons, tenses, examples) {
+              setState(() {
+                _selectedPersons = persons;
+                _selectedTenses = tenses;
+                _selectedExamples = examples;
+              });
+            },
+          ),
     );
   }
 
+  void _goToFirstCard() {
+    setState(() {
+      _currentIndex = 0; // 🔹 맨 처음 카드로 이동
+      _showMeaning = false;
+    });
+  }
+
+  void _goToLastCard() {
+    setState(() {
+      _currentIndex = _cards.length - 1; // 🔹 맨 끝 카드로 이동
+      _showMeaning = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -156,24 +178,50 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       body: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          GestureDetector(
-            onTap: () {
-              setState(() {
-                _showMeaning = !_showMeaning;
-              });
-            },
-            child: Column(
-              children: [
-                Text(currentCard["text"] ?? "", style: const TextStyle(fontSize: 28)),
-                const SizedBox(height: 20),
-                if (_showMeaning)
-                  Text(currentCard["meaning"] ?? "", style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
-              ],
-            ),
+          // 🔹 좌우 화살표 버튼 추가 (맨 처음 / 이전 / 다음 / 맨 끝)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              AppIconButton(
+                icon: Icons.first_page, // ⏭ 맨 끝 카드 버튼
+                onPressed: _goToFirstCard,
+              ),
+              AppIconButton(
+                icon: Icons.arrow_back,
+                onPressed: _currentIndex > 0 || _repeatEnabled ? _goToPreviousCard : null,
+              ),
+              Expanded(
+                child: Column(
+                  children: [
+                    Text(
+                      currentCard["text"] ?? "",
+                      style: const TextStyle(fontSize: 28),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 20),
+                    if (_showMeaning)
+                      Text(
+                        currentCard["meaning"] ?? "",
+                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
+                  ],
+                ),
+              ),
+              AppIconButton(
+                icon: Icons.arrow_forward,
+                onPressed: _currentIndex < _cards.length - 1 || _repeatEnabled ? _goToNextCard : null,
+              ),
+              AppIconButton(
+                icon: Icons.last_page, // ⏭ 맨 끝 카드 버튼
+                onPressed: _goToLastCard,
+              ),
+            ],
           ),
 
           const SizedBox(height: 40),
-          Text("카드 ${_currentIndex + 1} / ${_cards.length}", style: const TextStyle(fontSize: 16)),
+          Text("카드 ${_currentIndex + 1} / ${_cards.length}",
+              style: const TextStyle(fontSize: 16)),
           const SizedBox(height: 40),
 
           // 🔹 하단 컨트롤바 (자동넘김, 반복, 셔플, TTS, 양면 읽기)
