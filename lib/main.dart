@@ -3,16 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart'; // Riverpod import
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'screens/auth/login_screen.dart';
 import 'screens/main/main_screen.dart';
-import 'screens/main/home/home_screen.dart';
-import 'screens/main/account/account_screen.dart';
-import 'screens/main/input/input_screen.dart';
-import 'screens/main/my_list/my_list_screen.dart';
-import 'screens/main/study/study_screen.dart';
 import 'package:langarden_common/constants.dart';
 import 'package:langarden_common/theme.dart';
-import 'package:langarden_common/widgets/bottom_nav_bar.dart';
 import 'package:langarden_common/providers/theme_provider.dart';
 import 'package:langarden_common/auth/auth_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';

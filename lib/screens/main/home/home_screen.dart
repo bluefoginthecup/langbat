@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:langarden_common/widgets/setting_screen.dart';
-import 'package:langarden_common/providers/theme_provider.dart';
 
 
 
@@ -11,8 +10,6 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 현재 테마 상태를 전역에서 구독합니다.
-    final currentTheme = ref.watch(themeModeProvider);
     // onThemeChanged는 전역 상태 업데이트 메서드로 대체됩니다.
     return Scaffold(
       appBar: AppBar(title: Text('홈')),

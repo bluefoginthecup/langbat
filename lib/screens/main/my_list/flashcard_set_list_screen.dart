@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-// 이미 만들어둔 Provider와 액션 위젯 (MultiSelectActions)
 import 'package:langarden_common/providers/multi_select_controller.dart';
 import 'package:langarden_common/widgets/multi_select_actions.dart';
 
@@ -10,7 +9,6 @@ import '../study/flashcard/flashcard_set_edit_screen.dart';
 import 'package:langarden_common/utils/trash_manager.dart';
 import '../study/flashcard/flashcard_study_screen.dart';
 import 'package:langarden_common/widgets/icon_button.dart'; // ✅ 툴팁 적용된 아이콘 버튼 불러오기
-
 
 class FlashcardSetListScreen extends ConsumerStatefulWidget {
   const FlashcardSetListScreen({Key? key}) : super(key: key);
@@ -20,37 +18,48 @@ class FlashcardSetListScreen extends ConsumerStatefulWidget {
 }
 
 class _FlashcardSetListScreenState extends ConsumerState<FlashcardSetListScreen> {
-  // 여기서는 docs를 굳이 로컬에 저장하지 않고, StreamBuilder의 snapshot 데이터만 사용.
-  Future<void> _startFlashcardLearning() async {
-    // 1) 선택된 세트들의 items를 모으기
+  Future<void> _startFlashcardLearning(String setId) async {
+    print("DEBUG => _startFlashcardLearning 실행됨! setId: $setId");
+
     final List<Map<String, String>> flashcards = [];
-    final controller = ref.read(multiSelectControllerProvider.notifier);
-    final selectedSetIds = controller.state;
 
-    for (String setId in selectedSetIds) {
-      final setDocRef = FirebaseFirestore.instance
-          .collection('flashcard_sets')
-          .doc(setId);
+    final setDocRef = FirebaseFirestore.instance
+        .collection('flashcard_sets')
+        .doc(setId);
+    print("DEBUG => Firestore에서 해당 setId 문서를 찾는 중...");
 
-      final itemsSnapshot = await setDocRef.collection('items').get();
+    final itemsSnapshot = await setDocRef.collection('items').get();
 
-      for (var doc in itemsSnapshot.docs) {
-        final data = doc.data();
-        // 예: data = {"content": {"text": "Hola", "meaning": "안녕"}}
-        final content = data["content"] ?? {};
-        flashcards.add({
-          "text": content["text"] ?? "",
-          "meaning": content["meaning"] ?? "",
-        });
+    print("DEBUG => itemsSnapshot.docs.length: ${itemsSnapshot.docs.length}"); // ✅ 몇 개의 아이템을 불러오는지 확인
+
+    for (var doc in itemsSnapshot.docs) { // ✅ 여기서 setId를 중복 선언하지 않도록 수정
+      final data = doc.data();
+      final content = data["content"] ?? {};
+
+      print("DEBUG => raw Firestore data: $data"); // ✅ Firestore에서 가져온 원본 데이터 출력
+
+      if (!data.containsKey("content")) {
+        print("⚠️ content 키가 없음! 데이터를 확인하세요.");
+        continue; // content 키가 없으면 추가하지 않음
       }
-      print("DEBUG => flashcards: $flashcards");
+
+      print("DEBUG => extracted content: $content"); // ✅ content 키 안의 데이터 확인
+
+      flashcards.add({
+        "text": content["text"] ?? "[텍스트 없음]",
+        "meaning": content["meaning"] ?? "[뜻 없음]",
+      });
     }
 
-    // 2) 멀티선택 해제
-    controller.toggleSelectionMode();
-    controller.clearSelection();
+    print("DEBUG => flashcards: $flashcards"); // ✅ 최종적으로 생성된 flashcards 리스트 확인
 
-    // 3) 학습 화면으로 이동
+    if (flashcards.isEmpty) {
+      print("⚠️ 플래시카드 데이터가 비어 있음! 학습 화면으로 이동하지 않음.");
+      return;
+    }
+
+    print("✅ 플래시카드 학습 화면으로 이동!");
+
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -59,169 +68,191 @@ class _FlashcardSetListScreenState extends ConsumerState<FlashcardSetListScreen>
     );
   }
 
-
   Future<void> moveSelectedSetsToTrash() async {
-    final controller = ref.read(multiSelectControllerProvider.notifier);
-    final selectedIds = controller.state;
+      final controller = ref.read(multiSelectControllerProvider.notifier);
+      final selectedIds = controller.state;
 
-    if (selectedIds.isEmpty) return;
+      if (selectedIds.isEmpty) return;
 
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("휴지통으로 이동"),
-        content: Text("${selectedIds.length}개의 세트를 휴지통으로 보내시겠습니까?"),
-        actions: [
-          TextButton(
-            child: const Text("취소"),
-            onPressed: () => Navigator.pop(context, false),
-          ),
-          ElevatedButton(
-            child: const Text("확인"),
-            onPressed: () => Navigator.pop(context, true),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true) return;
-
-    try {
-      // trash_manager.dart의 함수 호출 (moveItemsToTrash)
-      await TrashManager.moveItemsToTrash(
+      final confirm = await showDialog<bool>(
         context: context,
-        docIds: selectedIds.toList(),
-        originalCollection: 'flashcard_sets', // 원본
-        trashCollection: 'trash',            // 휴지통 컬렉션 (예시)
-        itemType: 'flashcard_set',           // 유형
+        builder: (context) =>
+            AlertDialog(
+              title: const Text("휴지통으로 이동"),
+              content: Text("${selectedIds.length}개의 세트를 휴지통으로 보내시겠습니까?"),
+              actions: [
+                TextButton(
+                  child: const Text("취소"),
+                  onPressed: () => Navigator.pop(context, false),
+                ),
+                ElevatedButton(
+                  child: const Text("확인"),
+                  onPressed: () => Navigator.pop(context, true),
+                ),
+              ],
+            ),
       );
 
-      // 멀티선택 해제
-      controller.toggleSelectionMode();
-      controller.clearSelection();
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("휴지통 이동 실패: $e")),
+      if (confirm != true) return;
+
+      try {
+        await TrashManager.moveItemsToTrash(
+          context: context,
+          docIds: selectedIds.toList(),
+          originalCollection: 'flashcard_sets',
+          trashCollection: 'trash',
+          itemType: 'flashcard_set',
+        );
+
+        controller.toggleSelectionMode();
+        controller.clearSelection();
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("휴지통 이동 실패: $e")),
+        );
+      }
+    }
+
+    @override
+    Widget build(BuildContext context) {
+      final controller = ref.watch(multiSelectControllerProvider.notifier);
+      final selectedIds = ref.watch(multiSelectControllerProvider);
+      final isSelectionMode = controller.selectionMode;
+
+      return Scaffold(
+        appBar: AppBar(
+          title: Text("내 플래시카드 세트"),
+          actions: [
+            AppIconButton(
+              icon: isSelectionMode ? Icons.cancel : Icons.checklist,
+              // ✅ 체크리스트 버튼
+              onPressed: () {
+                setState(() {
+                  controller.toggleSelectionMode();
+                });
+              },
+            ),
+          ],
+        ),
+        body: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('flashcard_sets')
+              .orderBy('createdAt', descending: true)
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return Center(child: Text("오류: ${snapshot.error}"));
+            }
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final docs = snapshot.data!.docs;
+            if (docs.isEmpty) {
+              return const Center(child: Text("생성된 세트가 없습니다."));
+            }
+
+            return Column(
+              children: [
+                if (isSelectionMode)
+                  MultiSelectActions(
+                    allSelected: selectedIds.length == docs.length,
+                    onToggleSelectAll: () {
+                      setState(() {
+                        if (selectedIds.length == docs.length) {
+                          controller.clearSelection();
+                        } else {
+                          for (var doc in docs) {
+                            if (!selectedIds.contains(doc.id)) {
+                              controller.toggleItem(doc.id);
+                            }
+                          }
+                        }
+                      });
+                    },
+                    onTrash: moveSelectedSetsToTrash,
+                    onLearn: () {
+                      if (selectedIds.isNotEmpty) {
+                        for (var setId in selectedIds) {
+                          _startFlashcardLearning(
+                              setId); // ✅ 선택된 모든 세트를 학습하도록 변경
+                        }
+                      }
+                    },
+                  ),
+
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: docs.length,
+                    itemBuilder: (context, index) {
+                      final doc = docs[index];
+                      final data = doc.data() as Map<String, dynamic>;
+                      final docId = doc.id;
+                      final name = data['name'] ?? '이름 없음';
+                      final createdAt = data['createdAt'];
+
+                      final isSelected = selectedIds.contains(docId);
+
+                      if (isSelectionMode) {
+                        return CheckboxListTile(
+                          key: ValueKey(docId),
+                          title: Text(name),
+                          subtitle: Text(createdAt != null
+                              ? "${(createdAt as Timestamp)
+                              .toDate()
+                              .toLocal()} 생성"
+                              : "날짜 없음"),
+                          value: isSelected,
+                          onChanged: (checked) {
+                            setState(() {
+                              controller.toggleItem(docId);
+                            });
+                          },
+                        );
+                      } else {
+                        return ListTile(
+                          key: ValueKey(docId),
+                          leading: const Icon(Icons.folder),
+                          title: Text(name),
+                          subtitle: Text(createdAt != null
+                              ? "${(createdAt as Timestamp)
+                              .toDate()
+                              .toLocal()} 생성"
+                              : "날짜 없음"),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              AppIconButton(
+                                icon: Icons.video_library, // ✅ 체크리스트 버튼
+                                onPressed: () {
+                                  print("DEBUG => 학습 버튼 클릭됨! setId: $docId");
+                                  _startFlashcardLearning(docId);
+                                },
+                              ),
+                              const SizedBox(width: 8),
+                              AppIconButton(
+                                icon: Icons.edit, // ✏️ 편집 버튼
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          FlashcardSetEditScreen(setId: docId),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
       );
     }
   }
-
-  @override
-  Widget build(BuildContext context) {
-    final controller = ref.watch(multiSelectControllerProvider.notifier);
-    final selectedIds = ref.watch(multiSelectControllerProvider);
-    final isSelectionMode = controller.selectionMode;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("내 플래시카드 세트"),
-        actions: [
-          IconButton(
-            icon: Icon(isSelectionMode ? Icons.cancel : Icons.checklist),
-            onPressed: () {
-              setState(() {
-                controller.toggleSelectionMode();
-              });
-            },
-          ),
-        ],
-      ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('flashcard_sets')
-            .orderBy('createdAt', descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(child: Text("오류: ${snapshot.error}"));
-          }
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final docs = snapshot.data!.docs;
-          if (docs.isEmpty) {
-            return const Center(child: Text("생성된 세트가 없습니다."));
-          }
-
-          // 🔑 이제 docs를 여기서 사용할 수 있음
-          return Column(
-            children: [
-              // 멀티선택 모드일 때만 MultiSelectActions 노출
-              if (isSelectionMode)
-                MultiSelectActions(
-                  allSelected: selectedIds.length == docs.length,
-                  onToggleSelectAll: () {
-                    setState(() {
-                      if (selectedIds.length == docs.length) {
-                        controller.clearSelection();
-                      } else {
-                        for (var doc in docs) {
-                          if (!selectedIds.contains(doc.id)) {
-                            controller.toggleItem(doc.id);
-                          }
-                        }
-                      }
-                    });
-                  },
-                  onTrash: moveSelectedSetsToTrash,
-                  onLearn: _startFlashcardLearning,
-
-                ),
-
-              // 이제 실제 리스트 뷰
-              Expanded(
-                child: ListView.builder(
-                  itemCount: docs.length,
-                  itemBuilder: (context, index) {
-                    final doc = docs[index];
-                    final data = doc.data() as Map<String, dynamic>;
-                    final docId = doc.id;
-                    final name = data['name'] ?? '이름 없음';
-                    final createdAt = data['createdAt'];
-
-                    final isSelected = selectedIds.contains(docId);
-
-                    if (isSelectionMode) {
-                      return CheckboxListTile(
-                        key: ValueKey(docId),
-                        title: Text(name),
-                        subtitle: Text(createdAt != null
-                            ? "${(createdAt as Timestamp).toDate().toLocal()} 생성"
-                            : "날짜 없음"),
-                        value: isSelected,
-                        onChanged: (checked) {
-                          setState(() {
-                            controller.toggleItem(docId);
-                          });
-                        },
-                      );
-                    } else {
-                      return ListTile(
-                        key: ValueKey(docId),
-                        leading: const Icon(Icons.folder),
-                        title: Text(name),
-                        subtitle: Text(createdAt != null
-                            ? "${(createdAt as Timestamp).toDate().toLocal()} 생성"
-                            : "날짜 없음"),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => FlashcardSetEditScreen(setId: docId),
-                            ),
-                          );
-                        },
-                      );
-                    }
-                  },
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
