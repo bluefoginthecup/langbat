@@ -1,12 +1,33 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:langarden_common/widgets/flashcard_controls.dart';
+import 'package:langarden_common/widgets/tts_controls.dart';
 import 'package:langarden_common/widgets/flashcard_filter.dart';
 import 'package:langarden_common/widgets/icon_button.dart';
 
+/// 변경됨: Firestore 데이터가 top-level에 "text"와 "meaning" 필드를 두고 있다고 가정
+String getFrontDisplay(Map<String, dynamic> card) {
+  // 변경됨: card["content"] 대신 card 자체의 "text"를 확인
+  // 만약 여러 시제를 합쳐야 한다면, 별도 로직 추가
+  if (card["text"] != null && card["text"].toString().isNotEmpty) {
+    return card["text"].toString();
+  }
+  // 필요하다면 fallback으로 card["verb"] 등을 확인
+  return "";
+}
+
+String getBackDisplay(Map<String, dynamic> card) {
+  // 변경됨: card["content"] 대신 card 자체의 "meaning"을 확인
+  if (card["meaning"] != null && card["meaning"].toString().isNotEmpty) {
+    return card["meaning"].toString();
+  }
+  return "";
+}
+
+String capitalize(String s) => s.isNotEmpty ? s[0].toUpperCase() + s.substring(1) : "";
+
 class FlashcardStudyScreen extends StatefulWidget {
-  final List<Map<String, String>> flashcards;
+  final List<Map<String, dynamic>> flashcards;
 
   const FlashcardStudyScreen({Key? key, required this.flashcards})
       : super(key: key);
@@ -18,29 +39,27 @@ class FlashcardStudyScreen extends StatefulWidget {
 class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
   int _currentIndex = 0;
   bool _showMeaning = false;
-  late List<Map<String, String>> _cards;
+  late List<Map<String, dynamic>> _cards;
   bool _repeatEnabled = false;
   bool _shuffleEnabled = false;
-  String _readingMode = "앞면만";
+  String _readingMode = "앞면만"; // "앞면만", "뒷면만", "앞뒤 번갈아 읽기"
 
-  // TTS 관련 변수
   int _repeatCount = 1;
-  int _timerMinutes = 0; // 전체 재생 시간(분); 0이면 무제한
+  int _timerMinutes = 0;
   bool _isPlaying = false;
   bool _isPaused = false;
-  DateTime? _playbackStartTime;
-  Duration _remainingPlaybackDuration = Duration.zero;
-
   final FlutterTts _flutterTts = FlutterTts();
 
-  Set<String> _selectedPersons = {};
-  Set<String> _selectedTenses = {};
-  Set<String> _selectedExamples = {};
+  // 사용자가 선택한 TTS 언어
+  String _frontLanguage = "es-ES";
+  String _backLanguage = "ko-KR";
 
   @override
   void initState() {
     super.initState();
     _cards = List.from(widget.flashcards);
+    // ✅ order가 null이면 9999를 기본값으로 설정하여 마지막으로 정렬
+    _cards.sort((a, b) => ((a["order"] ?? 9999) as int).compareTo((b["order"] ?? 9999) as int));
     _flutterTts.setSpeechRate(0.5);
     _flutterTts.setVolume(1.0);
     _flutterTts.setPitch(1.0);
@@ -72,26 +91,22 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
   }
 
   void _changeReadingMode(String mode) {
-    print("DEBUG => 읽기 모드 변경: $mode");
     setState(() {
       _readingMode = mode;
     });
   }
 
   void _changeSpeed(double speed) {
-    print("DEBUG => TTS 속도 변경: ${speed}x");
     _flutterTts.setSpeechRate(speed);
   }
 
   void _changeRepeat(int count) {
-    print("DEBUG => 반복 횟수 변경: $count");
     setState(() {
       _repeatCount = count;
     });
   }
 
   void _toggleShuffle(bool enabled) {
-    print("DEBUG => 셔플 모드: ${enabled ? 'ON' : 'OFF'}");
     setState(() {
       _shuffleEnabled = enabled;
       if (_shuffleEnabled) {
@@ -102,20 +117,32 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
   }
 
   void _setTimer(int minutes) {
-    print("DEBUG => 총 재생 시간 설정: $minutes 분");
     setState(() {
       _timerMinutes = minutes;
     });
   }
 
   void _onCardSliderChanged(int newIndex) {
+    debugPrint("DEBUG: _onCardSliderChanged 호출됨. newIndex: $newIndex");
     setState(() {
       _currentIndex = newIndex;
     });
   }
 
-  // 재생/일시정지 토글 함수
+  void _changeFrontLanguage(String lang) {
+    setState(() {
+      _frontLanguage = lang;
+    });
+  }
+
+  void _changeBackLanguage(String lang) {
+    setState(() {
+      _backLanguage = lang;
+    });
+  }
+
   void _toggleTTS() {
+    debugPrint("DEBUG: _toggleTTS 호출됨. isPlaying: $_isPlaying, isPaused: $_isPaused");
     if (_isPlaying) {
       _pauseTTS();
     } else if (_isPaused) {
@@ -125,40 +152,56 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     }
   }
 
-  // 한 카드에 대해 TTS를 수행하는 함수
   Future<void> _playCard(int index) async {
     setState(() {
       _currentIndex = index;
     });
     for (int i = 0; i < _repeatCount; i++) {
       if (!_isPlaying || _isPaused) break;
-      if (_readingMode == "앞면만") {
-        setState(() {
-          _showMeaning = false;
-        });
-        await _flutterTts.speak(_cards[index]["text"]!);
-      } else if (_readingMode == "뒷면만") {
-        setState(() {
-          _showMeaning = true;
-        });
-        await _flutterTts.speak(_cards[index]["meaning"]!);
-      } else if (_readingMode == "앞뒤 번갈아 읽기") {
-        setState(() {
-          _showMeaning = false;
-        });
-        await _flutterTts.speak(_cards[index]["text"]!);
-        await Future.delayed(Duration(milliseconds: 500));
-        setState(() {
-          _showMeaning = true;
-        });
-        await _flutterTts.speak(_cards[index]["meaning"]!);
-        await Future.delayed(Duration(milliseconds: 700));
+      try {
+        if (_readingMode == "앞면만") {
+          String frontText = getFrontDisplay(_cards[index]);
+          await _flutterTts.setLanguage(_frontLanguage);
+          setState(() {
+            _showMeaning = false;
+          });
+          debugPrint("TTS 시작: $frontText");
+          var result = await _flutterTts.speak(frontText);
+          debugPrint("TTS 호출 결과: $result");
+        } else if (_readingMode == "뒷면만") {
+          String backText = getBackDisplay(_cards[index]);
+          await _flutterTts.setLanguage(_backLanguage);
+          setState(() {
+            _showMeaning = true;
+          });
+          debugPrint("TTS 시작: $backText");
+          var result = await _flutterTts.speak(backText);
+          debugPrint("TTS 호출 결과: $result");
+        } else if (_readingMode == "앞뒤 번갈아 읽기") {
+          String frontText = getFrontDisplay(_cards[index]);
+          await _flutterTts.setLanguage(_frontLanguage);
+          setState(() {
+            _showMeaning = false;
+          });
+          debugPrint("TTS 시작 (앞면): $frontText");
+          await _flutterTts.speak(frontText);
+          await Future.delayed(const Duration(milliseconds: 500));
+          String backText = getBackDisplay(_cards[index]);
+          await _flutterTts.setLanguage(_backLanguage);
+          setState(() {
+            _showMeaning = true;
+          });
+          debugPrint("TTS 시작 (뒷면): $backText");
+          await _flutterTts.speak(backText);
+          await Future.delayed(const Duration(milliseconds: 700));
+        }
+      } catch (e) {
+        debugPrint("Error in _playCard: $e");
       }
-      await Future.delayed(Duration(milliseconds: 500));
+      await Future.delayed(const Duration(milliseconds: 500));
     }
   }
 
-  // 전체 재생 시간 동안 카드들을 순차적으로 읽음
   void _startTTS() async {
     if (_cards.isEmpty) return;
     setState(() {
@@ -167,25 +210,23 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     });
     Duration totalDuration = _timerMinutes > 0
         ? Duration(minutes: _timerMinutes)
-        : Duration(hours: 9999);
+        : const Duration(hours: 9999);
     DateTime playbackStart = DateTime.now();
-
     int index = _currentIndex;
     while (_isPlaying) {
       if (_isPaused) {
-        await Future.delayed(Duration(milliseconds: 200));
+        await Future.delayed(const Duration(milliseconds: 200));
         continue;
       }
       if (DateTime.now().difference(playbackStart) >= totalDuration) break;
       await _playCard(index);
       index = (index + 1) % _cards.length;
     }
-    _flutterTts.stop();
+    await _flutterTts.stop();
     setState(() {
       _isPlaying = false;
       _isPaused = false;
     });
-    print("DEBUG => TTS 재생 종료");
   }
 
   void _pauseTTS() {
@@ -195,11 +236,6 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       _isPlaying = false;
     });
     _flutterTts.stop();
-    if (_playbackStartTime != null) {
-      Duration elapsed = DateTime.now().difference(_playbackStartTime!);
-      _remainingPlaybackDuration = _remainingPlaybackDuration - elapsed;
-    }
-    print("DEBUG => TTS 일시정지");
   }
 
   void _resumeTTS() {
@@ -209,25 +245,6 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       _isPlaying = true;
     });
     _startTTS();
-    print("DEBUG => TTS 재개");
-  }
-
-  void _openFilterModal() async {
-    await showModalBottomSheet(
-      context: context,
-      builder: (_) => FlashcardFilter(
-        selectedPersons: _selectedPersons,
-        selectedTenses: _selectedTenses,
-        selectedExamples: _selectedExamples,
-        onFilterChanged: (persons, tenses, examples) {
-          setState(() {
-            _selectedPersons = persons;
-            _selectedTenses = tenses;
-            _selectedExamples = examples;
-          });
-        },
-      ),
-    );
   }
 
   void _goToFirstCard() {
@@ -252,8 +269,12 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
         body: const Center(child: Text("학습할 카드가 없습니다.")),
       );
     }
-
     final currentCard = _cards[_currentIndex];
+
+    // 변경됨: top-level "text"/"meaning" 필드를 사용
+    String displayText = _showMeaning
+        ? getBackDisplay(currentCard)
+        : getFrontDisplay(currentCard);
 
     return Scaffold(
       appBar: AppBar(
@@ -262,7 +283,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       body: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // 좌우 이동 버튼
+          // 상단 네비게이션
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -282,16 +303,13 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
                   onTap: () {
                     setState(() {
                       _showMeaning = !_showMeaning;
-                      print("DEBUG => 카드 토글됨! _showMeaning: $_showMeaning");
                     });
                   },
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        _showMeaning
-                            ? currentCard["meaning"]!
-                            : currentCard["text"]!,
+                        displayText,
                         style: const TextStyle(fontSize: 28),
                         textAlign: TextAlign.center,
                       ),
@@ -312,13 +330,14 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
             ],
           ),
           const SizedBox(height: 40),
+          // 현재 카드 인덱스 표시
           Text(
             "카드 ${_currentIndex + 1} / ${_cards.length}",
             style: const TextStyle(fontSize: 16),
           ),
           const SizedBox(height: 40),
-          // FlashcardControls 위젯 (슬라이더, 토글 아이콘 등)
-          FlashcardControls(
+          // TTS 컨트롤 패널
+          TTSControls(
             onToggleTTS: _toggleTTS,
             onChangeReadingMode: _changeReadingMode,
             onChangeSpeed: _changeSpeed,
@@ -326,10 +345,14 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
             onToggleShuffle: _toggleShuffle,
             onChangeTimer: _setTimer,
             onCardSliderChanged: _onCardSliderChanged,
+            onChangeFrontLanguage: _changeFrontLanguage,
+            onChangeBackLanguage: _changeBackLanguage,
             currentCardIndex: _currentIndex,
             totalCards: _cards.length,
             isPlaying: _isPlaying,
             isPaused: _isPaused,
+            frontLanguage: _frontLanguage,
+            backLanguage: _backLanguage,
           ),
         ],
       ),

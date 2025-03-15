@@ -22,28 +22,30 @@ class _FlashcardSetListScreenState extends ConsumerState<FlashcardSetListScreen>
     print("DEBUG => _startFlashcardLearning 실행됨! setId: $setId");
 
     final List<Map<String, String>> flashcards = [];
-
     final setDocRef = FirebaseFirestore.instance
         .collection('flashcard_sets')
         .doc(setId);
+
     print("DEBUG => Firestore에서 해당 setId 문서를 찾는 중...");
 
-    final itemsSnapshot = await setDocRef.collection('items').get();
+    final itemsSnapshot = await setDocRef.collection('items')
+        .orderBy("order") // ✅ order 필드 기준 정렬 추가
+        .get();
 
-    print("DEBUG => itemsSnapshot.docs.length: ${itemsSnapshot.docs.length}"); // ✅ 몇 개의 아이템을 불러오는지 확인
+    print("DEBUG => itemsSnapshot.docs.length: ${itemsSnapshot.docs.length}");
 
-    for (var doc in itemsSnapshot.docs) { // ✅ 여기서 setId를 중복 선언하지 않도록 수정
+    for (var doc in itemsSnapshot.docs) {
       final data = doc.data();
       final content = data["content"] ?? {};
 
-      print("DEBUG => raw Firestore data: $data"); // ✅ Firestore에서 가져온 원본 데이터 출력
+      print("DEBUG => raw Firestore data: $data");
 
       if (!data.containsKey("content")) {
         print("⚠️ content 키가 없음! 데이터를 확인하세요.");
-        continue; // content 키가 없으면 추가하지 않음
+        continue;
       }
 
-      print("DEBUG => extracted content: $content"); // ✅ content 키 안의 데이터 확인
+      print("DEBUG => extracted content: $content");
 
       flashcards.add({
         "text": content["text"] ?? "[텍스트 없음]",
@@ -51,7 +53,7 @@ class _FlashcardSetListScreenState extends ConsumerState<FlashcardSetListScreen>
       });
     }
 
-    print("DEBUG => flashcards: $flashcards"); // ✅ 최종적으로 생성된 flashcards 리스트 확인
+    print("DEBUG => flashcards (정렬 후): ${flashcards.map((card) => card["text"]).toList()}");
 
     if (flashcards.isEmpty) {
       print("⚠️ 플래시카드 데이터가 비어 있음! 학습 화면으로 이동하지 않음.");
