@@ -54,10 +54,8 @@ class LangbatApp extends ConsumerWidget {
       themeMode: themeMode,
       builder: (context, child) {
         return GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTap: () {
-            FocusScope.of(context).unfocus();
-          },
+          behavior: HitTestBehavior.opaque, // opaque 사용
+          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
           child: child,
         );
       },

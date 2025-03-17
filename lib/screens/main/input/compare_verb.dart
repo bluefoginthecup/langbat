@@ -267,10 +267,7 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: () => FocusScope.of(context).unfocus(),
-    child:Scaffold(
+    return Scaffold(
       appBar: AppBar(
         title: Text("${_verbController.text} 동사 상세 정보"),
         actions: [
@@ -403,7 +400,6 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
           ],
         ),
       ),
-    ),
     );
   }
 }
