@@ -51,7 +51,6 @@ class _FlashcardSetEditScreenState extends ConsumerState<FlashcardSetEditScreen>
     batch.commit();
   }
 
-  // 세트편집 페이지 내부 deleteSelectedItems() 대체 예시
   Future<void> deleteSelectedItems() async {
     final controller = ref.read(multiSelectControllerProvider.notifier);
 
@@ -72,14 +71,28 @@ class _FlashcardSetEditScreenState extends ConsumerState<FlashcardSetEditScreen>
       controller.toggleSelectionMode();
     });
   }
+
+  // 예문 등 모든 아이템의 내용을 표시할 때 새 데이터 구조를 반영하도록 수정
   String _buildDisplayText(Map<String, dynamic> data) {
     final content = data["content"] as Map<String, dynamic>? ?? {};
-    final text = content["text"] ?? "No text";
-    final meaning = content["meaning"] ?? "No meaning";
-    final orderVal = data["order"]?.toString() ?? "No order";
-    return "$text\n$meaning (order: $orderVal)";
+    String text = "";
+    String meaning = "";
+    // 만약 content에 "text"가 있으면 일반적으로 사용
+    if (content.containsKey("text")) {
+      text = content["text"] ?? "";
+      meaning = content["meaning"] ?? "";
+    }
+    // 예문 카드인 경우, "items" 배열이 있을 수 있음
+    else if (content.containsKey("items")) {
+      List<dynamic> items = content["items"];
+      // 각 예문의 text와 meaning을 결합해서 표시
+      text = items.map((e) => e["text"] ?? "").join("\n");
+      meaning = items.map((e) => e["meaning"] ?? "").join("\n");
+    } else {
+      text = "No data";
+    }
+    return "$text\n$meaning (order: ${data["order"]?.toString() ?? "No order"})";
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -133,7 +146,7 @@ class _FlashcardSetEditScreenState extends ConsumerState<FlashcardSetEditScreen>
                 });
               },
               onTrash: deleteSelectedItems,
-              onCart: null, // 필요없으면 null
+              onCart: null,
             ),
           Padding(
             padding: const EdgeInsets.all(12.0),
@@ -159,10 +172,6 @@ class _FlashcardSetEditScreenState extends ConsumerState<FlashcardSetEditScreen>
                 final index = entry.key;
                 final item = entry.value;
                 final data = item.data() as Map<String, dynamic>;
-                // 수정됨: content 내부의 "text", "meaning", "order"를 표시하여 순서를 확인
-                final content = data["content"] as Map<String, dynamic>? ?? {};
-                final text = content["text"] ?? "No text";
-                final meaning = content["meaning"] ?? "No meaning";
                 final displayText = _buildDisplayText(data);
                 final isSelected = controller.state.contains(item.id);
 
@@ -171,17 +180,16 @@ class _FlashcardSetEditScreenState extends ConsumerState<FlashcardSetEditScreen>
                   leading: controller.selectionMode
                       ? Icon(isSelected ? Icons.check_box : Icons.check_box_outline_blank)
                       : ReorderableDragStartListener(
-                    index: index,
-                    child: const Icon(Icons.drag_handle, color: Colors.green),
-                  ),
-                  title: Text(displayText
-                  ),
+                          index: index,
+                          child: const Icon(Icons.drag_handle, color: Colors.green),
+                        ),
+                  title: Text(displayText),
                   onTap: controller.selectionMode
                       ? () {
-                    setState(() {
-                      controller.toggleItem(item.id);
-                    });
-                  }
+                          setState(() {
+                            controller.toggleItem(item.id);
+                          });
+                        }
                       : null,
                 );
               }).toList(),

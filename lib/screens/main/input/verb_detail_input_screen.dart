@@ -8,8 +8,8 @@ class VerbDetailInputScreen extends StatefulWidget {
 
   const VerbDetailInputScreen({
     Key? key,
-    this.text='',
-    this.meaning='',
+    this.text = '',
+    this.meaning = '',
   }) : super(key: key);
 
   @override
@@ -17,6 +17,9 @@ class VerbDetailInputScreen extends StatefulWidget {
 }
 
 class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
+  // 수정됨: 현재 동사 원형을 관리하는 상태 변수 추가
+  late String _currentVerb;
+
   // 동사원형을 수정할 수 있는 컨트롤러 추가
   late TextEditingController _verbController;
   final TextEditingController _presentController = TextEditingController();
@@ -42,29 +45,59 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
 
   // Firestore에서 저장된 데이터를 불러와 컨트롤러에 채워 넣는 함수
   Future<void> _loadVerbDetails() async {
-    final doc = await FirebaseFirestore.instance.collection('verbs').doc(widget.text).get();
+    // 수정됨: widget.text 대신 _currentVerb 사용
+    final doc = await FirebaseFirestore.instance.collection('verbs').doc(_currentVerb).get();
     if (doc.exists) {
       final data = doc.data()!;
       setState(() {
-        // 동사원형 수정 컨트롤러에 초기값 설정
         _verbController.text = data['text'] ?? widget.text;
         _meaningController.text = data['meaning'] ?? widget.meaning;
-        _presentController.text = _mapToCommaSeparatedString(data['conjugations']['present']);
-        _preteriteController.text = _mapToCommaSeparatedString(data['conjugations']['preterite']);
-        _imperfectController.text = _mapToCommaSeparatedString(data['conjugations']['imperfect']);
-        _futureController.text = _mapToCommaSeparatedString(data['conjugations']['future']);
-        _subjunctiveController.text = data['conjugations']['subjunctive'] != null
-            ? _mapToCommaSeparatedString(data['conjugations']['subjunctive'])
-            : "";
-        _imperativeController.text = data['conjugations']['imperative'] != null
-            ? _mapToCommaSeparatedString(data['conjugations']['imperative'])
-            : "";
-        _beginnerExampleController.text = data['examples']?['beginner'] ?? "";
-        _intermediateExampleController.text = data['examples']?['intermediate'] ?? "";
-        _advancedExampleController.text = data['examples']?['advanced'] ?? "";
+        _presentController.text =
+            _mapToCommaSeparatedString(data['conjugations']?['present']?['forms'] ?? {});
+        _preteriteController.text =
+            _mapToCommaSeparatedString(data['conjugations']?['preterite']?['forms'] ?? {});
+        _imperfectController.text =
+            _mapToCommaSeparatedString(data['conjugations']?['imperfect']?['forms'] ?? {});
+        _futureController.text =
+            _mapToCommaSeparatedString(data['conjugations']?['future']?['forms'] ?? {});
+        _subjunctiveController.text =
+            _mapToCommaSeparatedString(data['conjugations']?['subjunctive']?['forms'] ?? {});
+        _imperativeController.text =
+            _mapToCommaSeparatedString(data['conjugations']?['imperative']?['forms'] ?? {});
+
+        // 예문은 이제 리스트로 저장되어 있으므로, 각 리스트를 개행 문자로 join하여 컨트롤러에 할당합니다.
+
+        _beginnerExampleController.text =
+            (data['examples']?['beginner']?['examples'] as List<dynamic>?)
+                ?.map((e) => "${e['text']} / ${e['meaning']}")
+                .join("\n") ?? "";
+        _intermediateExampleController.text =
+            (data['examples']?['intermediate']?['examples'] as List<dynamic>?)
+                ?.map((e) => "${e['text']} / ${e['meaning']}")
+                .join("\n") ?? "";
+        _advancedExampleController.text =
+            (data['examples']?['advanced']?['examples'] as List<dynamic>?)
+                ?.map((e) => "${e['text']} / ${e['meaning']}")
+                .join("\n") ?? "";
+
+
       });
     }
   }
+
+  List<Map<String, String>> parseMultipleExamples(String input) {
+    // 각 줄에 "스페인어 - 한국어" 형태로 저장한다고 가정
+    return input.trim().split("\n").map((line) {
+      final parts = line.split(" - ");
+      final exText = parts.isNotEmpty ? parts[0].trim() : "";
+      final exMeaning = parts.length > 1 ? parts[1].trim() : "";
+      return {
+        "text": exText,
+        "meaning": exMeaning,
+      };
+    }).where((pair) => pair["text"]!.isNotEmpty).toList();
+  }
+
 
   Future<void> _saveVerbDetails() async {
     // 파싱
@@ -76,6 +109,10 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
     final futureList = _parseConjugation(_futureController.text);
     final subjunctiveList = _parseConjugation(_subjunctiveController.text);
     final imperativeList = _parseConjugation(_imperativeController.text);
+    final beginnerExamples = parseMultipleExamples(_beginnerExampleController.text);
+    final intermediateExamples = parseMultipleExamples(_intermediateExampleController.text);
+    final advancedExamples = parseMultipleExamples(_advancedExampleController.text);
+
 
     Map<String, dynamic> buildConjugationMap(List<String> list) {
       return {
@@ -88,20 +125,51 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
       };
     }
 
+    // 수정됨: 새로운 conjugations 구조에 "order" 및 "forms" 필드 추가
     Map<String, dynamic> conjugations = {
-      "present": buildConjugationMap(presentList),
-      "preterite": buildConjugationMap(preteriteList),
-      "imperfect": buildConjugationMap(imperfectList),
-      "future": buildConjugationMap(futureList),
-      "subjunctive": buildConjugationMap(subjunctiveList),
-      "imperative": buildConjugationMap(imperativeList),
+      "present": {
+        "order": 0,
+        "forms": buildConjugationMap(presentList),
+      },
+      "preterite": {
+        "order": 1,
+        "forms": buildConjugationMap(preteriteList),
+      },
+      "imperfect": {
+        "order": 2,
+        "forms": buildConjugationMap(imperfectList),
+      },
+      "future": {
+        "order": 3,
+        "forms": buildConjugationMap(futureList),
+      },
+      "subjunctive": {
+        "order": 4,
+        "forms": buildConjugationMap(subjunctiveList),
+      },
+      "imperative": {
+        "order": 5,
+        "forms": buildConjugationMap(imperativeList),
+      },
     };
 
+// Firestore에 저장 시: "examples.beginner.items" 등으로 저장 (굳이 items 라는 키 사용)
+// 또는 더욱 간단히 "examples.beginner": beginnerExamples 로 저장
     Map<String, dynamic> examples = {
-      "beginner": _beginnerExampleController.text.trim(),
-      "intermediate": _intermediateExampleController.text.trim(),
-      "advanced": _advancedExampleController.text.trim(),
+      "beginner": {
+        "order": 100,
+        "items": beginnerExamples,
+      },
+      "intermediate": {
+        "order": 200,
+        "items": intermediateExamples,
+      },
+      "advanced": {
+        "order": 300,
+        "items": advancedExamples,
+      },
     };
+
 
     Map<String, dynamic> data = {
       "text": newText,
@@ -112,10 +180,13 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
     };
 
     try {
-      // 만약 동사원형이 수정되었다면, 새 문서를 만들고 기존 문서를 삭제
-      if (newText != widget.text) {
+      // 수정됨: 새 동사원형이 기존 _currentVerb와 다르면 새 문서를 만들고 기존 문서를 삭제 후 _currentVerb 업데이트
+      if (newText != _currentVerb) {
         await FirebaseFirestore.instance.collection('verbs').doc(newText).set(data);
-        await FirebaseFirestore.instance.collection('verbs').doc(widget.text).delete();
+        await FirebaseFirestore.instance.collection('verbs').doc(_currentVerb).delete();
+        setState(() {
+          _currentVerb = newText;
+        });
       } else {
         await FirebaseFirestore.instance.collection('verbs').doc(newText).set(data);
       }
@@ -134,6 +205,8 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
   @override
   void initState() {
     super.initState();
+    // 수정됨: _currentVerb를 widget.text로 초기화
+    _currentVerb = widget.text;
     _verbController = TextEditingController(text: widget.text);
     _loadVerbDetails();
   }

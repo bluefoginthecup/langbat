@@ -58,8 +58,6 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
   void initState() {
     super.initState();
     _cards = List.from(widget.flashcards);
-    // ✅ order가 null이면 9999를 기본값으로 설정하여 마지막으로 정렬
-    _cards.sort((a, b) => ((a["order"] ?? 9999) as int).compareTo((b["order"] ?? 9999) as int));
     _flutterTts.setSpeechRate(0.5);
     _flutterTts.setVolume(1.0);
     _flutterTts.setPitch(1.0);
@@ -151,8 +149,8 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       _startTTS();
     }
   }
-
   Future<void> _playCard(int index) async {
+    if (!mounted) return;
     setState(() {
       _currentIndex = index;
     });
@@ -162,6 +160,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
         if (_readingMode == "앞면만") {
           String frontText = getFrontDisplay(_cards[index]);
           await _flutterTts.setLanguage(_frontLanguage);
+          if (!mounted) return;
           setState(() {
             _showMeaning = false;
           });
@@ -171,6 +170,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
         } else if (_readingMode == "뒷면만") {
           String backText = getBackDisplay(_cards[index]);
           await _flutterTts.setLanguage(_backLanguage);
+          if (!mounted) return;
           setState(() {
             _showMeaning = true;
           });
@@ -180,6 +180,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
         } else if (_readingMode == "앞뒤 번갈아 읽기") {
           String frontText = getFrontDisplay(_cards[index]);
           await _flutterTts.setLanguage(_frontLanguage);
+          if (!mounted) return;
           setState(() {
             _showMeaning = false;
           });
@@ -188,6 +189,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
           await Future.delayed(const Duration(milliseconds: 500));
           String backText = getBackDisplay(_cards[index]);
           await _flutterTts.setLanguage(_backLanguage);
+          if (!mounted) return;
           setState(() {
             _showMeaning = true;
           });
@@ -260,6 +262,13 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       _showMeaning = false;
     });
   }
+
+  @override
+  void dispose() {
+    _flutterTts.stop();
+    super.dispose();
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -359,3 +368,4 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     );
   }
 }
+

@@ -21,17 +21,11 @@ class _FlashcardSetListScreenState extends ConsumerState<FlashcardSetListScreen>
   Future<void> _startFlashcardLearning(String setId) async {
     print("DEBUG => _startFlashcardLearning 실행됨! setId: $setId");
 
-    final List<Map<String, String>> flashcards = [];
-    final setDocRef = FirebaseFirestore.instance
-        .collection('flashcard_sets')
-        .doc(setId);
-
+    final List<Map<String, dynamic>> flashcards = [];
+    final setDocRef = FirebaseFirestore.instance.collection('flashcard_sets').doc(setId);
     print("DEBUG => Firestore에서 해당 setId 문서를 찾는 중...");
 
-    final itemsSnapshot = await setDocRef.collection('items')
-        .orderBy("order") // ✅ order 필드 기준 정렬 추가
-        .get();
-
+    final itemsSnapshot = await setDocRef.collection('items').get();
     print("DEBUG => itemsSnapshot.docs.length: ${itemsSnapshot.docs.length}");
 
     for (var doc in itemsSnapshot.docs) {
@@ -39,19 +33,22 @@ class _FlashcardSetListScreenState extends ConsumerState<FlashcardSetListScreen>
       final content = data["content"] ?? {};
 
       print("DEBUG => raw Firestore data: $data");
-
       if (!data.containsKey("content")) {
         print("⚠️ content 키가 없음! 데이터를 확인하세요.");
         continue;
       }
-
       print("DEBUG => extracted content: $content");
 
+      // 저장된 데이터 구조가 이미 일관되게 order 값을 부여하고 있다면 그대로 사용
       flashcards.add({
         "text": content["text"] ?? "[텍스트 없음]",
         "meaning": content["meaning"] ?? "[뜻 없음]",
+        "order": content["order"] ?? data["order"] ?? 9999,
       });
     }
+
+    // flashcards 리스트를 order 필드 기준 오름차순 정렬
+    flashcards.sort((a, b) => (a["order"] as int).compareTo(b["order"] as int));
 
     print("DEBUG => flashcards (정렬 후): ${flashcards.map((card) => card["text"]).toList()}");
 
@@ -69,6 +66,7 @@ class _FlashcardSetListScreenState extends ConsumerState<FlashcardSetListScreen>
       ),
     );
   }
+
 
   Future<void> moveSelectedSetsToTrash() async {
       final controller = ref.read(multiSelectControllerProvider.notifier);
