@@ -6,7 +6,7 @@ enum NodeType { category, data }
 class Node {
   String name;
   NodeType type;
-  Map<String, String> data; // 추가 데이터 예: {"뜻": "사과", "예문": "I ate an apple."}
+  Map<String, String> data; // 예: {"뜻": "사과", "예문": "I ate an apple."}
   List<Node> children;
 
   Node({
@@ -16,16 +16,6 @@ class Node {
     List<Node>? children,
   }) : data = data ?? {},
         children = children ?? [];
-
-  // 노드와 하위 노드를 JSON 형태로 변환
-  Map<String, dynamic> toJson() {
-    return {
-      'name': name,
-      'type': type == NodeType.category ? 'category' : 'data',
-      'data': data,
-      'children': children.map((child) => child.toJson()).toList(),
-    };
-  }
 }
 
 class MakeListScreen extends StatefulWidget {
@@ -63,7 +53,7 @@ class _MakeListScreenState extends State<MakeListScreen> {
     );
   }
 
-  // 새 리스트(최상위 노드) 생성
+  // 새 최상위 리스트(노드) 생성 (Firestore의 최상위 컬렉션 'lists'에 해당)
   void _createNewList(BuildContext context) {
     String listName = "";
     showDialog(
@@ -80,7 +70,9 @@ class _MakeListScreenState extends State<MakeListScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                if (listName.trim().isNotEmpty) {
+                if (listName
+                    .trim()
+                    .isNotEmpty) {
                   setState(() {
                     lists.add(Node(name: listName));
                   });
@@ -95,16 +87,23 @@ class _MakeListScreenState extends State<MakeListScreen> {
     );
   }
 
-  // Firestore에 데이터를 저장하는 함수
+  // 최상위 리스트를 저장할 때, 노드 이름을 문서 ID로 사용
   Future<void> _saveToFirebase() async {
-    // 리스트들을 Map 형태로 변환합니다.
-    List<Map<String, dynamic>> listData =
-    lists.map((node) => node.toJson()).toList();
     try {
-      await FirebaseFirestore.instance.collection('lists').add({
-        'lists': listData,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
+      for (var listNode in lists) {
+        // 리스트 이름을 문서 ID로 사용 (예: "VerbList" 등)
+        DocumentReference listDoc = FirebaseFirestore.instance
+            .collection('lists')
+            .doc(listNode.name);
+        await listDoc.set({
+          'name': listNode.name,
+          'type': listNode.type == NodeType.category ? 'category' : 'data',
+          'data': listNode.data,
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+        // 하위 노드들을 재귀적으로 저장
+        await _saveChildren(listNode.children, listDoc);
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Firebase 저장 완료')),
       );
@@ -114,14 +113,32 @@ class _MakeListScreenState extends State<MakeListScreen> {
       );
     }
   }
+
+
+// 부모 문서의 "children" 서브컬렉션에 하위 노드들을 저장할 때도 노드 이름을 문서 ID로 사용
+  Future<void> _saveChildren(List<Node> children,
+      DocumentReference parentDoc) async {
+    for (var child in children) {
+      DocumentReference childDoc = parentDoc
+          .collection('children')
+          .doc(child.name); // 노드 이름을 문서 ID로 사용
+      await childDoc.set({
+        'name': child.name,
+        'type': child.type == NodeType.category ? 'category' : 'data',
+        'data': child.data,
+      });
+      if (child.children.isNotEmpty) {
+        await _saveChildren(child.children, childDoc);
+      }
+    }
+  }
 }
 
 class NodeWidget extends StatefulWidget {
   final Node node;
-  final VoidCallback? onDelete; // 부모로부터 삭제 요청 콜백
+  final VoidCallback? onDelete; // 부모에게 삭제 요청을 알리는 콜백
 
-  const NodeWidget({Key? key, required this.node, this.onDelete})
-      : super(key: key);
+  const NodeWidget({Key? key, required this.node, this.onDelete}) : super(key: key);
 
   @override
   _NodeWidgetState createState() => _NodeWidgetState();
@@ -130,7 +147,7 @@ class NodeWidget extends StatefulWidget {
 class _NodeWidgetState extends State<NodeWidget> {
   bool isExpanded = false;
 
-  // 노드 편집 다이얼로그 (이름, 타입, 추가 데이터 "뜻" 입력)
+  // 노드 편집 다이얼로그: 이름, 타입, 데이터 입력(여기서는 "뜻")
   void _editNode(BuildContext context, Node node) {
     String newName = node.name;
     String additionalData = node.data["뜻"] ?? "";
@@ -139,7 +156,7 @@ class _NodeWidgetState extends State<NodeWidget> {
       context: context,
       builder: (context) {
         return StatefulBuilder(
-          builder: (context, setState) {
+          builder: (context, setStateDialog) {
             return AlertDialog(
               title: Text("노드 편집"),
               content: Column(
@@ -155,7 +172,7 @@ class _NodeWidgetState extends State<NodeWidget> {
                     value: selectedType,
                     onChanged: (NodeType? newValue) {
                       if (newValue != null) {
-                        setState(() {
+                        setStateDialog(() {
                           selectedType = newValue;
                         });
                       }
@@ -163,9 +180,7 @@ class _NodeWidgetState extends State<NodeWidget> {
                     items: NodeType.values.map((NodeType type) {
                       return DropdownMenuItem<NodeType>(
                         value: type,
-                        child: Text(
-                          type == NodeType.category ? "카테고리" : "데이터",
-                        ),
+                        child: Text(type == NodeType.category ? "카테고리" : "데이터"),
                       );
                     }).toList(),
                   ),
@@ -204,14 +219,14 @@ class _NodeWidgetState extends State<NodeWidget> {
     );
   }
 
-  // 노드 삭제
+  // 노드 삭제 (부모에게 삭제 요청)
   void _deleteNode(BuildContext context) {
     if (widget.onDelete != null) {
       widget.onDelete!();
     }
   }
 
-  // 하위 노드 추가 다이얼로그 (이름, 타입, 추가 데이터 "뜻" 입력)
+  // 하위 노드 추가 다이얼로그: 이름, 타입, 추가 데이터("뜻") 입력
   void _addChildNode(BuildContext context, Node parent) {
     String childName = "";
     NodeType selectedType = NodeType.category;
@@ -220,7 +235,7 @@ class _NodeWidgetState extends State<NodeWidget> {
       context: context,
       builder: (context) {
         return StatefulBuilder(
-          builder: (context, setState) {
+          builder: (context, setStateDialog) {
             return AlertDialog(
               title: Text("${parent.name}에 추가할 항목"),
               content: Column(
@@ -237,7 +252,7 @@ class _NodeWidgetState extends State<NodeWidget> {
                     value: selectedType,
                     onChanged: (NodeType? newValue) {
                       if (newValue != null) {
-                        setState(() {
+                        setStateDialog(() {
                           selectedType = newValue;
                         });
                       }
@@ -245,9 +260,7 @@ class _NodeWidgetState extends State<NodeWidget> {
                     items: NodeType.values.map((NodeType type) {
                       return DropdownMenuItem<NodeType>(
                         value: type,
-                        child: Text(
-                          type == NodeType.category ? "카테고리" : "데이터",
-                        ),
+                        child: Text(type == NodeType.category ? "카테고리" : "데이터"),
                       );
                     }).toList(),
                   ),
@@ -268,9 +281,7 @@ class _NodeWidgetState extends State<NodeWidget> {
                         Node newNode = Node(
                           name: childName,
                           type: selectedType,
-                          data: selectedType == NodeType.data
-                              ? {"뜻": additionalData}
-                              : {},
+                          data: selectedType == NodeType.data ? {"뜻": additionalData} : {},
                         );
                         parent.children.add(newNode);
                       });
