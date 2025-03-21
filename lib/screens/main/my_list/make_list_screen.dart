@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../my_list/list_detail_screen.dart';
 
 enum NodeType { category, data }
 
@@ -30,30 +31,72 @@ class _MakeListScreenState extends State<MakeListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("리스트 생성"),
+        title: Text("새 리스트 생성"),
         actions: [
+          // 우측에 + 아이콘을 먼저 배치 (디스켓 아이콘 왼쪽)
+          IconButton(
+            icon: Icon(Icons.add),
+            tooltip: "새 리스트 생성",
+            onPressed: () => _createNewList(context),
+          ),
           IconButton(
             icon: Icon(Icons.save),
+            tooltip: "저장",
             onPressed: _saveToFirebase,
           ),
         ],
       ),
-      body: lists.isEmpty
-          ? Center(child: Text("새 리스트를 생성하세요"))
-          : ListView.builder(
-        itemCount: lists.length,
-        itemBuilder: (context, index) {
-          return NodeWidget(node: lists[index]);
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _createNewList(context),
-        child: Icon(Icons.add),
-      ),
+        body: StreamBuilder<QuerySnapshot>(
+    stream: FirebaseFirestore.instance.collection('lists').snapshots(),
+    builder: (context, snapshot) {
+    if (snapshot.hasError) {
+    return Center(child: Text("오류: ${snapshot.error}"));
+    }
+    if (snapshot.connectionState == ConnectionState.waiting) {
+    return const Center(child: CircularProgressIndicator());
+    }
+    final docs = snapshot.data!.docs;
+    if (docs.isEmpty) {
+    return const Center(child: Text("저장된 리스트가 없습니다."));
+    }
+    return ListView.builder(
+    itemCount: docs.length,
+    itemBuilder: (context, index) {
+    final doc = docs[index];
+    final data = doc.data() as Map<String, dynamic>;
+    final node = Node(
+    name: data['name'] ?? '',
+    type: data['type'] == 'data' ? NodeType.data : NodeType.category,
+    data: (data['data'] as Map?)?.cast<String, String>() ?? {},
+    children: [], // 상세 화면에서 children을 불러올 수도 있음
+    );
+    return ListTile(
+    title: Text(node.name),
+    subtitle: node.type == NodeType.data
+    ? Text("뜻: ${node.data['뜻'] ?? ''}")
+        : null,
+    onTap: () {
+    // 상세 페이지로 이동
+    Navigator.push(
+    context,
+    MaterialPageRoute(
+    builder: (context) => ListDetailScreen(
+    node: node,
+    docId: doc.id,
+    ),
+    ),
+    );
+    },
+    );
+    },
+    );
+    },
+    )
+
     );
   }
 
-  // 새 최상위 리스트(노드) 생성 (Firestore의 최상위 컬렉션 'lists'에 해당)
+  // 새 최상위 리스트(노드) 생성 다이얼로그
   void _createNewList(BuildContext context) {
     String listName = "";
     showDialog(
@@ -70,9 +113,7 @@ class _MakeListScreenState extends State<MakeListScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                if (listName
-                    .trim()
-                    .isNotEmpty) {
+                if (listName.trim().isNotEmpty) {
                   setState(() {
                     lists.add(Node(name: listName));
                   });
@@ -87,21 +128,16 @@ class _MakeListScreenState extends State<MakeListScreen> {
     );
   }
 
-  // 최상위 리스트를 저장할 때, 노드 이름을 문서 ID로 사용
+  // Firestore에 저장하는 함수 (현재는 문서 ID를 자동 생성하는 방식)
   Future<void> _saveToFirebase() async {
     try {
       for (var listNode in lists) {
-        // 리스트 이름을 문서 ID로 사용 (예: "VerbList" 등)
-        DocumentReference listDoc = FirebaseFirestore.instance
-            .collection('lists')
-            .doc(listNode.name);
-        await listDoc.set({
+        DocumentReference listDoc = await FirebaseFirestore.instance.collection('lists').add({
           'name': listNode.name,
           'type': listNode.type == NodeType.category ? 'category' : 'data',
           'data': listNode.data,
           'timestamp': FieldValue.serverTimestamp(),
         });
-        // 하위 노드들을 재귀적으로 저장
         await _saveChildren(listNode.children, listDoc);
       }
       ScaffoldMessenger.of(context).showSnackBar(
@@ -114,15 +150,10 @@ class _MakeListScreenState extends State<MakeListScreen> {
     }
   }
 
-
-// 부모 문서의 "children" 서브컬렉션에 하위 노드들을 저장할 때도 노드 이름을 문서 ID로 사용
-  Future<void> _saveChildren(List<Node> children,
-      DocumentReference parentDoc) async {
+  // 하위 노드들을 재귀적으로 저장
+  Future<void> _saveChildren(List<Node> children, DocumentReference parentDoc) async {
     for (var child in children) {
-      DocumentReference childDoc = parentDoc
-          .collection('children')
-          .doc(child.name); // 노드 이름을 문서 ID로 사용
-      await childDoc.set({
+      DocumentReference childDoc = await parentDoc.collection('children').add({
         'name': child.name,
         'type': child.type == NodeType.category ? 'category' : 'data',
         'data': child.data,
@@ -147,7 +178,7 @@ class NodeWidget extends StatefulWidget {
 class _NodeWidgetState extends State<NodeWidget> {
   bool isExpanded = false;
 
-  // 노드 편집 다이얼로그: 이름, 타입, 데이터 입력(여기서는 "뜻")
+  // 노드 편집 다이얼로그 (이름, 타입, 추가 데이터 "뜻")
   void _editNode(BuildContext context, Node node) {
     String newName = node.name;
     String additionalData = node.data["뜻"] ?? "";
@@ -219,14 +250,14 @@ class _NodeWidgetState extends State<NodeWidget> {
     );
   }
 
-  // 노드 삭제 (부모에게 삭제 요청)
+  // 노드 삭제
   void _deleteNode(BuildContext context) {
     if (widget.onDelete != null) {
       widget.onDelete!();
     }
   }
 
-  // 하위 노드 추가 다이얼로그: 이름, 타입, 추가 데이터("뜻") 입력
+  // 하위 노드 추가 다이얼로그 (이름, 타입, "뜻" 입력)
   void _addChildNode(BuildContext context, Node parent) {
     String childName = "";
     NodeType selectedType = NodeType.category;
