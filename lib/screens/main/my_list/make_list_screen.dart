@@ -1,23 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../my_list/list_detail_screen.dart';
-
-enum NodeType { category, data }
-
-class Node {
-  String name;
-  NodeType type;
-  Map<String, String> data; // 예: {"뜻": "사과", "예문": "I ate an apple."}
-  List<Node> children;
-
-  Node({
-    required this.name,
-    this.type = NodeType.category,
-    Map<String, String>? data,
-    List<Node>? children,
-  }) : data = data ?? {},
-        children = children ?? [];
-}
+import 'package:langbat/models/node_model.dart';
 
 class MakeListScreen extends StatefulWidget {
   @override
@@ -46,53 +29,15 @@ class _MakeListScreenState extends State<MakeListScreen> {
           ),
         ],
       ),
-        body: StreamBuilder<QuerySnapshot>(
-    stream: FirebaseFirestore.instance.collection('lists').snapshots(),
-    builder: (context, snapshot) {
-    if (snapshot.hasError) {
-    return Center(child: Text("오류: ${snapshot.error}"));
-    }
-    if (snapshot.connectionState == ConnectionState.waiting) {
-    return const Center(child: CircularProgressIndicator());
-    }
-    final docs = snapshot.data!.docs;
-    if (docs.isEmpty) {
-    return const Center(child: Text("저장된 리스트가 없습니다."));
-    }
-    return ListView.builder(
-    itemCount: docs.length,
-    itemBuilder: (context, index) {
-    final doc = docs[index];
-    final data = doc.data() as Map<String, dynamic>;
-    final node = Node(
-    name: data['name'] ?? '',
-    type: data['type'] == 'data' ? NodeType.data : NodeType.category,
-    data: (data['data'] as Map?)?.cast<String, String>() ?? {},
-    children: [], // 상세 화면에서 children을 불러올 수도 있음
-    );
-    return ListTile(
-    title: Text(node.name),
-    subtitle: node.type == NodeType.data
-    ? Text("뜻: ${node.data['뜻'] ?? ''}")
-        : null,
-    onTap: () {
-    // 상세 페이지로 이동
-    Navigator.push(
-    context,
-    MaterialPageRoute(
-    builder: (context) => ListDetailScreen(
-    node: node,
-    docId: doc.id,
-    ),
-    ),
-    );
-    },
-    );
-    },
-    );
-    },
-    )
-
+      body: lists.isEmpty
+          ? Center(child: Text("아직 생성된 리스트가 없습니다."))
+          : ListView.builder(
+        itemCount: lists.length,
+        itemBuilder: (context, index) {
+          return NodeWidget(node: lists[index]);
+        },
+      ),
+      // floatingActionButton 제거
     );
   }
 

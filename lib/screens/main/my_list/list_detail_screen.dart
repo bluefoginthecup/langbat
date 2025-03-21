@@ -1,27 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'make_list_screen.dart'; // Node, NodeType 정의
-
-// Node 클래스 수정: docId 필드 추가
-class Node {
-  String name;
-  NodeType type;
-  Map<String, String> data;
-  List<Node> children;
-  String? docId; // Firestore 문서 ID
-
-  Node({
-    required this.name,
-    this.type = NodeType.category,
-    Map<String, String>? data,
-    List<Node>? children,
-    this.docId,
-  }) : data = data ?? {},
-        children = children ?? [];
-}
+import 'package:langbat/models/node_model.dart'; // Node, NodeType 공통 파일
 
 class ListDetailScreen extends StatefulWidget {
-  final Node node; // 초기 데이터 (참고용)
+  final Node node; // 초기 데이터(참고용)
   final String docId; // 최상위 리스트 문서 ID
 
   const ListDetailScreen({Key? key, required this.node, required this.docId})
@@ -40,7 +22,7 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
     _futureNode = _fetchNodeWithChildren(widget.docId);
   }
 
-  /// Firestore에서 최상위 문서와 하위 children을 재귀적으로 로드하는 함수
+  // Firestore에서 최상위 문서와 하위 children 서브컬렉션을 재귀적으로 로드
   Future<Node> _fetchNodeWithChildren(String docId) async {
     DocumentReference docRef =
     FirebaseFirestore.instance.collection('lists').doc(docId);
@@ -82,22 +64,19 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
     return node;
   }
 
-  /// 재귀적으로 현재 노드 트리의 변경사항을 Firestore에 업데이트하는 함수
+  // 재귀적으로 전체 노드 트리의 변경사항을 Firestore에 업데이트
   Future<void> _saveAllChanges(Node node, DocumentReference docRef) async {
     await docRef.update({
       'name': node.name,
       'data': node.data,
-      // 'type'은 보통 변경하지 않는다고 가정
     });
     for (var child in node.children) {
-      // child.docId가 null이 아니라고 가정
-      DocumentReference childRef =
-      docRef.collection('children').doc(child.docId);
+      DocumentReference childRef = docRef.collection('children').doc(child.docId);
       await _saveAllChanges(child, childRef);
     }
   }
 
-  /// 상단 저장 아이콘 클릭 시 전체 변경사항을 Firestore에 저장
+  // AppBar의 글로벌 저장 아이콘을 누르면 전체 변경사항을 Firestore에 업데이트
   Future<void> _globalSave() async {
     try {
       DocumentReference topRef =
@@ -162,7 +141,8 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
   }
 }
 
-/// NodeDetailWidget: 각 노드를 ExpansionTile 형태로 표시하며, 텍스트 탭 시 편집 모드로 전환됩니다.
+/// NodeDetailWidget: 각 노드를 ExpansionTile으로 표시하고, 탭하면 편집 모드로 전환되어 TextField가 나타남.
+/// 개별 저장 버튼은 제거하고, TextField의 onEditingComplete 이벤트로 편집 모드를 종료함.
 class NodeDetailWidget extends StatefulWidget {
   final Node node;
   final int indentLevel;
@@ -184,7 +164,8 @@ class _NodeDetailWidgetState extends State<NodeDetailWidget> {
     super.initState();
     _nameController = TextEditingController(text: widget.node.name);
     _meaningController = TextEditingController(
-        text: widget.node.type == NodeType.data ? widget.node.data["뜻"] ?? "" : "");
+      text: widget.node.type == NodeType.data ? widget.node.data["뜻"] ?? "" : "",
+    );
   }
 
   @override
@@ -201,6 +182,12 @@ class _NodeDetailWidgetState extends State<NodeDetailWidget> {
     _nameController.dispose();
     _meaningController.dispose();
     super.dispose();
+  }
+
+  void _toggleEditing() {
+    setState(() {
+      _isEditing = !_isEditing;
+    });
   }
 
   @override
@@ -220,6 +207,11 @@ class _NodeDetailWidgetState extends State<NodeDetailWidget> {
                   widget.node.name = value;
                 });
               },
+              onEditingComplete: () {
+                setState(() {
+                  _isEditing = false;
+                });
+              },
             ),
             if (widget.node.type == NodeType.data)
               TextField(
@@ -230,15 +222,16 @@ class _NodeDetailWidgetState extends State<NodeDetailWidget> {
                     widget.node.data["뜻"] = value;
                   });
                 },
+                onEditingComplete: () {
+                  setState(() {
+                    _isEditing = false;
+                  });
+                },
               ),
           ],
         )
             : GestureDetector(
-          onTap: () {
-            setState(() {
-              _isEditing = true;
-            });
-          },
+          onTap: _toggleEditing,
           child: Text(
             widget.node.type == NodeType.data
                 ? "${widget.node.name} - 뜻: ${widget.node.data['뜻'] ?? ''}"

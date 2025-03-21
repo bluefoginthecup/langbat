@@ -1,11 +1,13 @@
 // lib/screens/main/my_list/my_list_screen.dart
 import 'package:flutter/material.dart';
+import 'package:langbat/screens/main/my_list/custom_list_screen.dart';
 import 'verb_list_screen.dart';
 import 'sentence_list_screen.dart';
 import 'word_list_screen.dart';
 import 'flashcard_set_list_screen.dart';
 import 'trash_screen.dart';
 import 'make_list_screen.dart';
+import 'custom_list_screen.dart';
 
 class MyListScreen extends StatelessWidget {
   const MyListScreen({Key? key}) : super(key: key);
@@ -28,7 +30,7 @@ class MyListScreen extends StatelessWidget {
           children: [
             // "새 리스트 생성" 버튼 추가
             ElevatedButton(
-              onPressed: () => _navigateTo(context, MakeListScreen()),
+              onPressed: () => _navigateTo(context, CustomListScreen()),
               child: const Text("새 리스트 생성"),
             ),
             const SizedBox(height: 16),
