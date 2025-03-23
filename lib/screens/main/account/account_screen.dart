@@ -8,7 +8,7 @@ import 'package:langarden_common/auth/profile_update_screen.dart'; // 회원정�
 
 
 class AccountScreen extends StatelessWidget {
-  const AccountScreen({Key? key}) : super(key: key);
+  const AccountScreen({super.key});
 
   Stream<DocumentSnapshot<Map<String, dynamic>>> _userProfileStream() {
     final user = FirebaseAuth.instance.currentUser;

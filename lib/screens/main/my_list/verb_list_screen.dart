@@ -6,7 +6,7 @@ import 'package:langarden_common/widgets/multi_select_actions.dart';
 import '../cart/cart_screen.dart';
 
 class VerbListScreen extends StatefulWidget {
-  const VerbListScreen({Key? key}) : super(key: key);
+  const VerbListScreen({super.key});
 
   @override
   _VerbListScreenState createState() => _VerbListScreenState();

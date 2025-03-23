@@ -6,8 +6,7 @@ class ListDetailScreen extends StatefulWidget {
   final Node node; // 초기 데이터(참고용)
   final String docId; // 최상위 리스트 문서 ID
 
-  const ListDetailScreen({Key? key, required this.node, required this.docId})
-      : super(key: key);
+  const ListDetailScreen({super.key, required this.node, required this.docId});
 
   @override
   _ListDetailScreenState createState() => _ListDetailScreenState();
@@ -124,12 +123,15 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
       body: FutureBuilder<Node>(
         future: _futureNode,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting)
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator());
-          if (snapshot.hasError)
+          }
+          if (snapshot.hasError) {
             return Center(child: Text("오류: ${snapshot.error}"));
-          if (!snapshot.hasData)
+          }
+          if (!snapshot.hasData) {
             return Center(child: Text("데이터가 없습니다."));
+          }
           Node fullNode = snapshot.data!;
           return SingleChildScrollView(
             padding: EdgeInsets.all(16.0),
@@ -147,8 +149,7 @@ class NodeDetailWidget extends StatefulWidget {
   final Node node;
   final int indentLevel;
 
-  const NodeDetailWidget({Key? key, required this.node, this.indentLevel = 0})
-      : super(key: key);
+  const NodeDetailWidget({super.key, required this.node, this.indentLevel = 0});
 
   @override
   _NodeDetailWidgetState createState() => _NodeDetailWidgetState();

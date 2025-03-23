@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class WordSimpleInputScreen extends StatefulWidget {
-  const WordSimpleInputScreen({Key? key}) : super(key: key);
+  const WordSimpleInputScreen({super.key});
 
   @override
   _WordSimpleInputScreenState createState() => _WordSimpleInputScreenState();

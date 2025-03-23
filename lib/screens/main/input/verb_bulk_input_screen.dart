@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class VerbBulkInputScreen extends StatefulWidget {
   // 동사 원형을 생성자 매개변수로 받지 않고, 화면 내에서 입력하도록 할 수 있음.
-  const VerbBulkInputScreen({Key? key}) : super(key: key);
+  const VerbBulkInputScreen({super.key});
 
   @override
   _VerbBulkInputScreenState createState() => _VerbBulkInputScreenState();
@@ -38,7 +38,7 @@ class _VerbBulkInputScreenState extends State<VerbBulkInputScreen> {
   Map<String, dynamic> _buildConjugationMap(String input) {
     final list = input.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
     return {
-      "yo": list.length > 0 ? list[0] : "",
+      "yo": list.isNotEmpty ? list[0] : "",
       "tú": list.length > 1 ? list[1] : "",
       "él/ella/Ud": list.length > 2 ? list[2] : "",
       "nosotros": list.length > 3 ? list[3] : "",

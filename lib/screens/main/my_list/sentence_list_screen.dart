@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 
 class SentenceListScreen extends StatelessWidget {
-  const SentenceListScreen({Key? key}) : super(key: key);
+  const SentenceListScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

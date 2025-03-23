@@ -8,7 +8,7 @@ import 'package:langarden_common/utils/firebase_multi_deleter.dart';
 class FlashcardSetEditScreen extends ConsumerStatefulWidget {
   final String setId;
 
-  const FlashcardSetEditScreen({Key? key, required this.setId}) : super(key: key);
+  const FlashcardSetEditScreen({super.key, required this.setId});
 
   @override
   _FlashcardSetEditScreenState createState() => _FlashcardSetEditScreenState();

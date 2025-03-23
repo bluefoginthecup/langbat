@@ -6,11 +6,10 @@ import 'sentence_list_screen.dart';
 import 'word_list_screen.dart';
 import 'flashcard_set_list_screen.dart';
 import 'trash_screen.dart';
-import 'make_list_screen.dart';
-import 'custom_list_screen.dart';
+import '../cart/cart_screen.dart';
 
 class MyListScreen extends StatelessWidget {
-  const MyListScreen({Key? key}) : super(key: key);
+  const MyListScreen({super.key});
 
   void _navigateTo(BuildContext context, Widget destination) {
     Navigator.push(
@@ -32,6 +31,10 @@ class MyListScreen extends StatelessWidget {
             ElevatedButton(
               onPressed: () => _navigateTo(context, CustomListScreen()),
               child: const Text("새 리스트 생성"),
+            ),
+            ElevatedButton(
+              onPressed: () => _navigateTo(context, CartScreen()),
+              child: const Text("장바구니"),
             ),
             const SizedBox(height: 16),
             ElevatedButton(

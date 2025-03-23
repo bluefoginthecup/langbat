@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:langbat/models/node_model.dart';
 
 class MakeListScreen extends StatefulWidget {
+  const MakeListScreen({super.key});
+
   @override
   _MakeListScreenState createState() => _MakeListScreenState();
 }
@@ -114,7 +116,7 @@ class NodeWidget extends StatefulWidget {
   final Node node;
   final VoidCallback? onDelete; // 부모에게 삭제 요청을 알리는 콜백
 
-  const NodeWidget({Key? key, required this.node, this.onDelete}) : super(key: key);
+  const NodeWidget({super.key, required this.node, this.onDelete});
 
   @override
   _NodeWidgetState createState() => _NodeWidgetState();
@@ -135,7 +137,17 @@ class _NodeWidgetState extends State<NodeWidget> {
           builder: (context, setStateDialog) {
             return AlertDialog(
               title: Text("노드 편집"),
-              content: Column(
+              content: Padding(
+                  padding: MediaQuery.of(context).viewInsets,
+                  child: SingleChildScrollView(
+                  child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.4, // 화면 높이의 40% 정도로 제한
+            ),
+            child: Padding(
+            // 아래쪽에 약간의 패딩 추가
+            padding: const EdgeInsets.only(bottom: 18.0),
+              child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextField(
@@ -168,6 +180,9 @@ class _NodeWidgetState extends State<NodeWidget> {
                     ),
                 ],
               ),
+                ),),
+                ),
+              ),
               actions: [
                 TextButton(
                   onPressed: () {
@@ -182,7 +197,7 @@ class _NodeWidgetState extends State<NodeWidget> {
                         }
                       });
                       Navigator.of(context).pop();
-                      this.setState(() {});
+                      setState(() {});
                     }
                   },
                   child: Text("저장"),

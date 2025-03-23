@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class VerbSimpleInputScreen extends StatefulWidget {
-  const VerbSimpleInputScreen({Key? key}) : super(key: key);
+  const VerbSimpleInputScreen({super.key});
 
   @override
   _VerbSimpleInputScreenState createState() => _VerbSimpleInputScreenState();
@@ -36,7 +36,7 @@ class _VerbSimpleInputScreenState extends State<VerbSimpleInputScreen> {
   Map<String, dynamic> _buildConjugationMap(String input) {
     final list = input.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
     return {
-      "yo": list.length > 0 ? list[0] : "",
+      "yo": list.isNotEmpty ? list[0] : "",
       "tú": list.length > 1 ? list[1] : "",
       "él/ella/Ud": list.length > 2 ? list[2] : "",
       "nosotros": list.length > 3 ? list[3] : "",

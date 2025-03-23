@@ -6,7 +6,7 @@ import 'word_simple_input_screen.dart'; // 단어 간단입력 화면 파일
 
 
 class InputScreen extends StatelessWidget {
-  const InputScreen({Key? key}) : super(key: key);
+  const InputScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -49,7 +49,7 @@ class InputScreen extends StatelessWidget {
 }
 
 class DataBatchInputSelectionScreen extends StatelessWidget {
-  const DataBatchInputSelectionScreen({Key? key}) : super(key: key);
+  const DataBatchInputSelectionScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -110,7 +110,7 @@ class DataBatchInputSelectionScreen extends StatelessWidget {
 
 // 문장 대량입력 페이지 (예시)
 class SentenceBatchInputScreen extends StatelessWidget {
-  const SentenceBatchInputScreen({Key? key}) : super(key: key);
+  const SentenceBatchInputScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -123,7 +123,7 @@ class SentenceBatchInputScreen extends StatelessWidget {
 
 // 단어 대량입력 페이지 (예시)
 class WordBatchInputScreen extends StatelessWidget {
-  const WordBatchInputScreen({Key? key}) : super(key: key);
+  const WordBatchInputScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -136,7 +136,7 @@ class WordBatchInputScreen extends StatelessWidget {
 
 // 간단 입력 페이지 (예시)
 class SimpleInputScreen extends StatelessWidget {
-  const SimpleInputScreen({Key? key}) : super(key: key);
+  const SimpleInputScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

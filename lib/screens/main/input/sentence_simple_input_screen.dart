@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class SentenceSimpleInputScreen extends StatefulWidget {
-  const SentenceSimpleInputScreen({Key? key}) : super(key: key);
+  const SentenceSimpleInputScreen({super.key});
 
   @override
   _SentenceSimpleInputScreenState createState() => _SentenceSimpleInputScreenState();

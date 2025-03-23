@@ -11,7 +11,7 @@ import '../study/flashcard/flashcard_study_screen.dart';
 import 'package:langarden_common/widgets/icon_button.dart'; // ✅ 툴팁 적용된 아이콘 버튼 불러오기
 
 class FlashcardSetListScreen extends ConsumerStatefulWidget {
-  const FlashcardSetListScreen({Key? key}) : super(key: key);
+  const FlashcardSetListScreen({super.key});
 
   @override
   _FlashcardSetListScreenState createState() => _FlashcardSetListScreenState();

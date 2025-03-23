@@ -7,7 +7,7 @@ import 'my_list/my_list_screen.dart';
 import 'study/study_screen.dart';
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({Key? key}) : super(key: key);
+  const MainScreen({super.key});
 
   @override
   _MainScreenState createState() => _MainScreenState();

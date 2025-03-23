@@ -42,6 +42,10 @@ dependencies:
   flutter_riverpod: ^2.6.1
   riverpod_annotation: ^2.6.1
 
+  cloud_firestore: any
+  flutter_tts: any
+  firebase_auth: any
+  shared_preferences: any
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -7,10 +7,10 @@ class VerbBatchInputScreen extends StatefulWidget {
   final String defaultMeaning; // 기본 뜻 (옵션)
 
   const VerbBatchInputScreen({
-    Key? key,
+    super.key,
     required this.verb,
     this.defaultMeaning = "",
-  }) : super(key: key);
+  });
 
   @override
   _VerbBatchInputScreenState createState() => _VerbBatchInputScreenState();
@@ -45,7 +45,7 @@ class _VerbBatchInputScreenState extends State<VerbBatchInputScreen> {
   Map<String, dynamic> _buildConjugationMap(String input) {
     List<String> list = _parseConjugation(input);
     return {
-      "yo": list.length > 0 ? list[0] : "",
+      "yo": list.isNotEmpty ? list[0] : "",
       "tú": list.length > 1 ? list[1] : "",
       "él/ella/Ud": list.length > 2 ? list[2] : "",
       "nosotros": list.length > 3 ? list[3] : "",

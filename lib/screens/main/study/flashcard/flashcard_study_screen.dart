@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:langarden_common/widgets/tts_controls.dart';
-import 'package:langarden_common/widgets/flashcard_filter.dart';
 import 'package:langarden_common/widgets/icon_button.dart';
 
 /// 변경됨: Firestore 데이터가 top-level에 "text"와 "meaning" 필드를 두고 있다고 가정
@@ -29,8 +28,7 @@ String capitalize(String s) => s.isNotEmpty ? s[0].toUpperCase() + s.substring(1
 class FlashcardStudyScreen extends StatefulWidget {
   final List<Map<String, dynamic>> flashcards;
 
-  const FlashcardStudyScreen({Key? key, required this.flashcards})
-      : super(key: key);
+  const FlashcardStudyScreen({super.key, required this.flashcards});
 
   @override
   _FlashcardStudyScreenState createState() => _FlashcardStudyScreenState();
@@ -40,7 +38,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
   int _currentIndex = 0;
   bool _showMeaning = false;
   late List<Map<String, dynamic>> _cards;
-  bool _repeatEnabled = false;
+  final bool _repeatEnabled = false;
   bool _shuffleEnabled = false;
   String _readingMode = "앞면만"; // "앞면만", "뒷면만", "앞뒤 번갈아 읽기"
 

@@ -34,10 +34,10 @@ class VerbDetailInputScreen extends StatefulWidget {
   final String meaning;  // 동사의 뜻 (예: "말하다")
 
   const VerbDetailInputScreen({
-    Key? key,
+    super.key,
     this.text = '',
     this.meaning = '',
-  }) : super(key: key);
+  });
 
   @override
   _VerbDetailInputScreenState createState() => _VerbDetailInputScreenState();
@@ -117,7 +117,7 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
 
     Map<String, dynamic> buildConjugationMap(List<String> list) {
       return {
-        "yo": list.length > 0 ? list[0] : "",
+        "yo": list.isNotEmpty ? list[0] : "",
         "tú": list.length > 1 ? list[1] : "",
         "él/ella/Ud": list.length > 2 ? list[2] : "",
         "nosotros": list.length > 3 ? list[3] : "",

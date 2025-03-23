@@ -39,8 +39,7 @@ class LangbatApp extends ConsumerWidget {
   final bool autoLogin;
   final User? user;
 
-  const LangbatApp({Key? key, required this.autoLogin, this.user})
-      : super(key: key);
+  const LangbatApp({super.key, required this.autoLogin, this.user});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

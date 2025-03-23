@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:langarden_common/widgets/multi_select_actions.dart';
 
 class TrashScreen extends StatefulWidget {
-  const TrashScreen({Key? key}) : super(key: key);
+  const TrashScreen({super.key});
 
   @override
   _TrashScreenState createState() => _TrashScreenState();
