@@ -148,14 +148,21 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
 class NodeDetailWidget extends StatefulWidget {
   final Node node;
   final int indentLevel;
+  final VoidCallback? onDelete;
 
-  const NodeDetailWidget({super.key, required this.node, this.indentLevel = 0});
+  const NodeDetailWidget({
+    super.key,
+    required this.node,
+    this.indentLevel = 0,
+    this.onDelete,});
 
   @override
   _NodeDetailWidgetState createState() => _NodeDetailWidgetState();
 }
 
+
 class _NodeDetailWidgetState extends State<NodeDetailWidget> {
+  bool isExpanded = false;
   bool _isEditing = false;
   late TextEditingController _nameController;
   late TextEditingController _meaningController;
@@ -189,6 +196,66 @@ class _NodeDetailWidgetState extends State<NodeDetailWidget> {
     setState(() {
       _isEditing = !_isEditing;
     });
+  }
+
+  /// 하위 노드 추가 다이얼로그 (ListDetailScreen용)
+  void _addChildNode(BuildContext context, Node parent) {
+    String childName = "";
+    NodeType selectedType = NodeType.category;
+    String additionalData = "";
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: Text("${parent.name}에 추가할 항목"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    decoration: InputDecoration(hintText: "항목 이름"),
+                    onChanged: (value) => childName = value,
+                  ),
+                  DropdownButton<NodeType>(
+                    value: selectedType,
+                    onChanged: (newValue) => setStateDialog(() {
+                      selectedType = newValue!;
+                    }),
+                    items: NodeType.values.map((t) =>
+                        DropdownMenuItem(value: t, child: Text(t == NodeType.category ? "카테고리" : "데이터"))
+                    ).toList(),
+                  ),
+                  if (selectedType == NodeType.data)
+                    TextField(
+                      decoration: InputDecoration(hintText: "뜻"),
+                      onChanged: (value) => additionalData = value,
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  child: Text("추가"),
+                  onPressed: () {
+                    if (childName.trim().isNotEmpty) {
+                      setState(() {
+                        parent.children.add(Node(
+                          name: childName,
+                          type: selectedType,
+                          data: selectedType == NodeType.data ? {"뜻": additionalData} : {},
+                        ));
+                      });
+                      Navigator.pop(context);
+                    }
+                  },
+                )
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -240,11 +307,27 @@ class _NodeDetailWidgetState extends State<NodeDetailWidget> {
             style: Theme.of(context).textTheme.titleLarge,
           ),
         ),
+        onExpansionChanged: (expanded) => setState(() => isExpanded = expanded),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'add') _addChildNode(context, widget.node);
+                if (value == 'edit') _toggleEditing();
+                if (value == 'delete') widget.onDelete?.call();
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(value: 'add', child: Text("하위 항목 추가")),
+                PopupMenuItem(value: 'edit', child: Text("편집")),
+                PopupMenuItem(value: 'delete', child: Text("삭제")),
+              ],
+            ),
+            Icon(isExpanded ? Icons.expand_less : Icons.expand_more),
+          ],
+        ),
         children: widget.node.children
-            .map((child) => NodeDetailWidget(
-          node: child,
-          indentLevel: widget.indentLevel + 1,
-        ))
+            .map((child) => NodeDetailWidget(node: child, indentLevel: widget.indentLevel + 1))
             .toList(),
       ),
     );

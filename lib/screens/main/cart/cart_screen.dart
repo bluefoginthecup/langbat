@@ -1,26 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../study/flashcard/flashcard_set_edit_screen.dart';
-
-/// 커스텀 리스트를 평탄화하는 함수
-List<Map<String, dynamic>> flattenCustomList(Node node) {
-  List<Map<String, dynamic>> cards = [];
-  // 노드 타입이 데이터라면 플래시카드 항목으로 변환 (여기서는 노드의 이름과 data["뜻"] 사용)
-  if (node.type == NodeType.data) {
-    cards.add({
-      "text": node.name,
-      "meaning": node.data["뜻"] ?? "",
-      "order": 0, // 필요에 따라 순서를 지정
-    });
-  }
-  // 자식 노드가 있다면 재귀적으로 평탄화 처리
-  for (var child in node.children) {
-    cards.addAll(flattenCustomList(child));
-  }
-  // 로그 출력: 해당 노드의 평탄화 결과 확인
-  print("Node '${node.name}' 평탄화 결과: $cards");
-  return cards;
-}
+import '/models/node_model.dart'; // Node 및 NodeType을 가져옵니다.
 
 /// 기존 동사 리스트의 subcard 생성 함수
 List<Map<String, dynamic>> buildSubcardsFromVerb(Map<String, dynamic> verbData) {
@@ -96,49 +77,63 @@ List<Map<String, dynamic>> buildSubcardsFromVerb(Map<String, dynamic> verbData) 
 
 String capitalize(String s) => s.isNotEmpty ? s[0].toUpperCase() + s.substring(1) : "";
 
-/// 임시로 Node와 NodeType 클래스를 정의 (실제로는 공통 모델 파일로 분리해야 함)
-enum NodeType { category, data }
-
-class Node {
-  String name;
-  NodeType type;
-  Map<String, String> data;
-  List<Node> children;
-  // Firestore 업데이트 시 사용
-  String? docId;
-
-  Node({
-    required this.name,
-    this.type = NodeType.category,
-    Map<String, String>? data,
-    List<Node>? children,
-    this.docId,
-  }) : data = data ?? {},
-        children = children ?? [];
-}
-
 /// Firestore 문서 하나를 Node로 만드는 함수 (하위 컬렉션까지 재귀적으로 읽음)
+
 Future<Node> buildNodeFromDocument(DocumentSnapshot docSnap) async {
-  final docData = docSnap.data() as Map<String, dynamic>? ?? {};
+  final raw = docSnap.data() as Map<String, dynamic>? ?? {};
+
+  // 최상위 필드에서 name/type 꺼내기 (한 단계 위 구조 반영)
+  String name = raw['name']?.toString() ?? docSnap.id;
+  NodeType type = (raw['type']?.toString() == 'data')
+      ? NodeType.data
+      : NodeType.category;
+
+  // 뜻(meaning)만 data 맵에서 꺼냄
+  final dataMap = raw['data'] as Map<String, dynamic>? ?? {};
   final node = Node(
-    name: docData["data"]?["name"] ?? "",
-    type: (docData["data"]?["type"] == 'data') ? NodeType.data : NodeType.category,
-    data: (docData["data"] as Map?)?.cast<String, String>() ?? {},
+    name: name,
+    type: type,
+    data: {"뜻": dataMap['뜻']?.toString() ?? ""},
     children: [],
   );
 
-  // 하위 컬렉션 'children' 읽기
-  final childrenSnapshot = await docSnap.reference.collection('children').get();
-  for (final childDoc in childrenSnapshot.docs) {
-    final childNode = await buildNodeFromDocument(childDoc);
-    node.children.add(childNode);
+  final childrenSnap = await docSnap.reference.collection('children').get();
+  for (final child in childrenSnap.docs) {
+    node.children.add(await buildNodeFromDocument(child));
   }
-
   return node;
 }
 
+/// Node 트리 → 평탄화 리스트 (플래시카드)
+List<Map<String, dynamic>> flattenCustomList(Node node) {
+  final cards = <Map<String, dynamic>>[];
+
+  // Leaf 노드거나 category지만 자식이 없는 경우 카드 추가
+  if (node.type == NodeType.data || (node.children.isEmpty && node.name.isNotEmpty)) {
+    cards.add({
+      "text": node.name,
+      "meaning": node.data["뜻"] ?? "",
+      "order": 0,
+    });
+  }
+
+  for (var child in node.children) {
+    cards.addAll(flattenCustomList(child));
+  }
+  print("Node '${node.name}' 평탄화 결과: $cards");
+  return cards;
+}
 class CartScreen extends StatelessWidget {
   const CartScreen({Key? key}) : super(key: key);
+
+  /// lists 컬렉션에서 특정 문서를 cart에 추가 (참조만)
+  Future<void> addListToCart(String listDocId) async {
+    await FirebaseFirestore.instance.collection('cart').add({
+      "type": "custom",
+      "originalId": listDocId,
+      "addedAt": FieldValue.serverTimestamp(),
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -155,6 +150,17 @@ class CartScreen extends StatelessWidget {
               tooltip: "플래시카드 세트로 만들기",
               onPressed: () async {
                 await _createFlashcardSetFromCart(context);
+              },
+            ),
+            // 저장 버튼 추가: custom list를 Firestore에 저장
+            IconButton(
+              icon: const Icon(Icons.save),
+              tooltip: "Custom List 저장",
+              onPressed: () async {
+                await _saveCustomListsToFirestore();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Custom List 저장 완료")),
+                );
               },
             ),
             IconButton(
@@ -179,33 +185,37 @@ class CartScreen extends StatelessWidget {
             if (docs.isEmpty) {
               return const Center(child: Text("장바구니가 비었습니다."));
             }
-            return Column(
-              children: [
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: docs.length,
-                    itemBuilder: (context, index) {
-                      final doc = docs[index];
-                      final data = doc.data() as Map<String, dynamic>;
-                      final type = data["type"] ?? "unknown";
-                      final content = data["data"];
-                      final displayText = type == "custom"
-                          ? (content["name"] ?? "")
-                          : (content["text"] ?? content["word"] ?? content["sentence"] ?? "");
-                      return ListTile(
-                        leading: Icon(_getIcon(type)),
-                        title: Text(displayText),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete),
-                          onPressed: () {
-                            _removeFromCart(doc.id); // 개별 항목 삭제
-                          },
-                        ),
-                      );
+            return ListView.builder(
+              itemCount: docs.length,
+              itemBuilder: (context, index) {
+                final doc = docs[index];
+                final data = doc.data() as Map<String, dynamic>;
+                final type = data["type"] ?? "unknown";
+
+                // "custom"인 경우, listDocId로 lists 문서 참조
+                String displayText;
+                if (type == "custom") {
+                  final originalId = data["originalId"] ?? "???";
+                  displayText = "참조 문서: $originalId";
+                } else {
+                  // verb 등 다른 타입
+                  final content = data["data"] ?? {};
+                  displayText = content["text"] ??
+                      content["word"] ??
+                      content["sentence"] ??
+                      "이름 없음";
+                }
+                return ListTile(
+                  leading: Icon(_getIcon(type)),
+                  title: Text(displayText),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete),
+                    onPressed: () {
+                      _removeFromCart(doc.id);
                     },
                   ),
-                ),
-              ],
+                );
+              },
             );
           },
         ),
@@ -240,7 +250,7 @@ class CartScreen extends StatelessWidget {
       final docData = doc.data();
       print("전체 docData: $docData");  // 전체 데이터를 출력
       final type = docData["type"] ?? "unknown";
-      print("docData['type']: $type");  // type 필드 값을 출력
+      print("카트 문서: ${doc.id}, type: $type");
 
       List<Map<String, dynamic>> subcards = [];
 
@@ -248,19 +258,32 @@ class CartScreen extends StatelessWidget {
         // 기존 동사 리스트 처리
         subcards = buildSubcardsFromVerb(docData["data"]);
       } else if (type == "custom") {
-        // 커스텀 리스트 처리: 하위 컬렉션까지 읽어와서 Node 트리 구성
-        final customNode = await buildNodeFromDocument(doc);
-        print("customNode: ${customNode.name}, children count: ${customNode.children.length}");
+        final listDocId = docData["originalId"];
+        if (listDocId == null) {
+          print("ERROR: custom 문서인데 originalId가 없음");
+          continue;
+        }
+        final listDocSnap = await FirebaseFirestore.instance
+            .collection('lists')
+            .doc(listDocId)
+            .get();
+        if (!listDocSnap.exists) {
+          print("ERROR: lists/$listDocId 문서가 존재하지 않음");
+          continue;
+        }
+        // 원본 lists 문서를 Node로 변환
+        final customNode = await buildNodeFromDocument(listDocSnap);
         subcards = flattenCustomList(customNode);
       }
-      // subcards 리스트를 order 값 기준 정렬
+
+      // subcards 정렬
       subcards.sort((a, b) => (a["order"] as int).compareTo(b["order"] as int));
 
-      // 각 subcard를 flashcard 세트의 하위 컬렉션 "items"에 저장
+      // 각 subcard를 flashcard 세트 items 하위 컬렉션에 저장
       for (var subcard in subcards) {
         final itemRef = newSetRef.collection('items').doc();
         batch.set(itemRef, {
-          "content": subcard, // subcard 구조 (text, meaning, order)
+          "content": subcard,
           "type": docData["type"],
           "order": subcard["order"],
           "addedAt": FieldValue.serverTimestamp(),
@@ -284,6 +307,46 @@ class CartScreen extends StatelessWidget {
     );
   }
 
+  /// custom 리스트들을 Firestore에 저장하는 함수
+  Future<void> _saveCustomListsToFirestore() async {
+    final cartSnapshot = await FirebaseFirestore.instance.collection('cart').get();
+    for (var doc in cartSnapshot.docs) {
+      final docData = doc.data();
+      final type = docData["type"] ?? "unknown";
+      if (type == "custom") {
+        // custom 리스트에 대해 Node 트리 구성
+        final customNode = await buildNodeFromDocument(doc);
+        // 저장할 컬렉션 예시: "custom_lists" 컬렉션에 저장 (doc.id를 키로 사용)
+        final customListRef = FirebaseFirestore.instance.collection('custom_lists').doc(doc.id);
+        // 루트 노드 저장
+        await customListRef.set({
+          "data": {
+            "name": customNode.name,
+            "type": customNode.type == NodeType.data ? "data" : "category",
+            "뜻": customNode.data["뜻"] ?? "",
+          }
+        });
+        // 하위 노드 저장 (재귀 호출)
+        await _saveNodeChildrenToFirestore(customNode, customListRef);
+      }
+    }
+  }
+
+  Future<void> _saveNodeChildrenToFirestore(Node node, DocumentReference parentRef) async {
+    for (final child in node.children) {
+      final childRef = parentRef.collection('children').doc();
+      await childRef.set({
+        "data": {
+          "name": child.name,
+          "type": child.type == NodeType.data ? "data" : "category",
+          "뜻": child.data["뜻"] ?? "",
+        }
+      });
+      // 재귀적으로 하위 children 저장
+      await _saveNodeChildrenToFirestore(child, childRef);
+    }
+  }
+
   /// 타입별 아이콘 반환 함수
   IconData _getIcon(String type) {
     switch (type) {
@@ -293,6 +356,8 @@ class CartScreen extends StatelessWidget {
         return Icons.text_fields;
       case 'sentence':
         return Icons.subject;
+      case 'custom': // custom 타입에 대해 아이콘 지정
+        return Icons.note;
       default:
         return Icons.help_outline;
     }
