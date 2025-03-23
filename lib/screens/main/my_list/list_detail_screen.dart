@@ -63,18 +63,29 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
     return node;
   }
 
-  // 재귀적으로 전체 노드 트리의 변경사항을 Firestore에 업데이트
   Future<void> _saveAllChanges(Node node, DocumentReference docRef) async {
-    await docRef.update({
-      'name': node.name,
-      'data': node.data,
-    });
+    await docRef.set({
+      "name": node.name,
+      "type": node.type == NodeType.data ? "data" : "category",
+      "data": node.data,
+    }, SetOptions(merge: true));
+
     for (var child in node.children) {
-      DocumentReference childRef = docRef.collection('children').doc(child.docId);
-      await _saveAllChanges(child, childRef);
+      // 자식 문서가 없으면 create
+      if (child.docId == null) {
+        final newChildDoc = await docRef.collection('children').add({
+          "name": child.name,
+          "type": child.type == NodeType.data ? "data" : "category",
+          "data": child.data,
+        });
+        child.docId = newChildDoc.id;
+      } else {
+        // 이미 문서 있으면 set(merge: true)
+        DocumentReference childRef = docRef.collection('children').doc(child.docId);
+        await _saveAllChanges(child, childRef);
+      }
     }
   }
-
   // AppBar의 글로벌 저장 아이콘을 누르면 전체 변경사항을 Firestore에 업데이트
   Future<void> _globalSave() async {
     try {
@@ -220,43 +231,73 @@ class _NodeDetailWidgetState extends State<NodeDetailWidget> {
                   ),
                   DropdownButton<NodeType>(
                     value: selectedType,
-                    onChanged: (newValue) => setStateDialog(() {
-                      selectedType = newValue!;
-                    }),
-                    items: NodeType.values.map((t) =>
-                        DropdownMenuItem(value: t, child: Text(t == NodeType.category ? "카테고리" : "데이터"))
-                    ).toList(),
-                  ),
-                  if (selectedType == NodeType.data)
-                    TextField(
-                      decoration: InputDecoration(hintText: "뜻"),
-                      onChanged: (value) => additionalData = value,
-                    ),
-                ],
+                    onChanged: (NodeType? newValue) {
+            setStateDialog (() {
+            selectedType = newValue!;
+            });
+            },
+            items: NodeType.values.map((NodeType type) {
+              return DropdownMenuItem<NodeType>(
+                value: type,
+                child: Text(type == NodeType.category ? "카테고리" : "데이터"),
+              );
+              }).toList(),
+            ),
+            if (selectedType == NodeType.data)
+            TextField(
+            decoration: InputDecoration(hintText: "뜻"),
+            onChanged: (value) => additionalData = value,
+            ),
+            ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  if (childName.trim().isNotEmpty) {
+                    // 1) Node 객체 생성
+                    Node newNode = Node(
+                      name: childName,
+                      type: selectedType,
+                      data: selectedType == NodeType.data
+                          ? {"뜻": additionalData}
+                          : {},
+                    );
+
+                    // 2) Firestore에 문서 추가
+                    //   parent.docId가 없으면 루트 문서인지 확인해야 함
+                    //   여기서는 parent가 이미 Firestore에 있다고 가정
+                    final parentRef = FirebaseFirestore.instance
+                        .collection('lists')
+                        .doc(parent.docId); // parent.docId가 null이면 별도 처리
+                    final childDoc = await parentRef
+                        .collection('children')
+                        .add({
+                      "name": newNode.name,
+                      "type": newNode.type == NodeType.data ? "data" : "category",
+                      "data": newNode.data,
+                    });
+
+                    // 3) 새 노드에 docId 설정
+                    newNode.docId = childDoc.id;
+
+                    setState(() {
+                      parent.children.add(newNode);
+                    });
+
+                    Navigator.of(context).pop();
+                  }
+                },
+                child: Text("추가"),
               ),
-              actions: [
-                TextButton(
-                  child: Text("추가"),
-                  onPressed: () {
-                    if (childName.trim().isNotEmpty) {
-                      setState(() {
-                        parent.children.add(Node(
-                          name: childName,
-                          type: selectedType,
-                          data: selectedType == NodeType.data ? {"뜻": additionalData} : {},
-                        ));
-                      });
-                      Navigator.pop(context);
-                    }
-                  },
-                )
-              ],
+            ],
             );
           },
         );
       },
     );
   }
+
+
 
   @override
   Widget build(BuildContext context) {

@@ -30,11 +30,11 @@ class MyListScreen extends StatelessWidget {
             // "새 리스트 생성" 버튼 추가
             ElevatedButton(
               onPressed: () => _navigateTo(context, CustomListScreen()),
-              child: const Text("새 리스트 생성"),
+              child: const Text("커스텀 리스트"),
             ),
             ElevatedButton(
               onPressed: () => _navigateTo(context, CartScreen()),
-              child: const Text("장바구니"),
+              child: const Text("리스트 바구니"),
             ),
             const SizedBox(height: 16),
             ElevatedButton(

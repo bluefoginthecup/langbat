@@ -85,6 +85,7 @@ class _MakeListScreenState extends State<MakeListScreen> {
           'data': listNode.data,
           'timestamp': FieldValue.serverTimestamp(),
         });
+        listNode.docId = listDoc.id;
         await _saveChildren(listNode.children, listDoc);
       }
       ScaffoldMessenger.of(context).showSnackBar(

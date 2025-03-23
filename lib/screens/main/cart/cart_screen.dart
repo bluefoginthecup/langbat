@@ -136,6 +136,48 @@ class CartScreen extends StatelessWidget {
   }
 
   @override
+  Widget _buildCartTile(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    final type = data["type"] ?? "unknown";
+
+    if (type == "custom") {
+      final originalId = data["originalId"];
+      return FutureBuilder<DocumentSnapshot>(
+        future: FirebaseFirestore.instance.collection('lists').doc(originalId).get(),
+        builder: (ctx, snap) {
+          String title;
+          if (snap.connectionState == ConnectionState.waiting) {
+            title = "불러오는 중...";
+          } else if (!snap.hasData || !snap.data!.exists) {
+            title = "리스트 없음";
+          } else {
+            title = snap.data!['name'].toString();
+          }
+          return ListTile(
+            leading: Icon(_getIcon(type)),
+            title: Text(title),
+            trailing: IconButton(
+              icon: const Icon(Icons.delete),
+              onPressed: () => _removeFromCart(doc.id),
+            ),
+          );
+        },
+      );
+    }
+
+    final content = data["data"] as Map<String, dynamic>? ?? {};
+    final displayText = content["text"] ?? content["word"] ?? content["sentence"] ?? "이름 없음";
+    return ListTile(
+      leading: Icon(_getIcon(type)),
+      title: Text(displayText),
+      trailing: IconButton(
+        icon: const Icon(Icons.delete),
+        onPressed: () => _removeFromCart(doc.id),
+      ),
+    );
+  }
+
+
   Widget build(BuildContext context) {
     return GestureDetector(
       // 화면 탭 시 키보드 해제
@@ -187,36 +229,9 @@ class CartScreen extends StatelessWidget {
             }
             return ListView.builder(
               itemCount: docs.length,
-              itemBuilder: (context, index) {
-                final doc = docs[index];
-                final data = doc.data() as Map<String, dynamic>;
-                final type = data["type"] ?? "unknown";
-
-                // "custom"인 경우, listDocId로 lists 문서 참조
-                String displayText;
-                if (type == "custom") {
-                  final originalId = data["originalId"] ?? "???";
-                  displayText = "참조 문서: $originalId";
-                } else {
-                  // verb 등 다른 타입
-                  final content = data["data"] ?? {};
-                  displayText = content["text"] ??
-                      content["word"] ??
-                      content["sentence"] ??
-                      "이름 없음";
-                }
-                return ListTile(
-                  leading: Icon(_getIcon(type)),
-                  title: Text(displayText),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete),
-                    onPressed: () {
-                      _removeFromCart(doc.id);
-                    },
-                  ),
-                );
-              },
+              itemBuilder: (context, index) => _buildCartTile(docs[index]),
             );
+
           },
         ),
       ),
