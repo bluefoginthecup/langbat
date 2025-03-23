@@ -40,7 +40,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
   late List<Map<String, dynamic>> _cards;
   final bool _repeatEnabled = false;
   bool _shuffleEnabled = false;
-  String _readingMode = "앞면만"; // "앞면만", "뒷면만", "앞뒤 번갈아 읽기"
+  String _readingMode = "앞뒤"; // "앞면만", "뒷면만", "앞뒤 번갈아 읽기"
 
   int _repeatCount = 1;
   int _timerMinutes = 0;
@@ -154,50 +154,45 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     });
     for (int i = 0; i < _repeatCount; i++) {
       if (!_isPlaying || _isPaused) break;
+
       try {
-        if (_readingMode == "앞면만") {
-          String frontText = getFrontDisplay(_cards[index]);
+        final frontText = getFrontDisplay(_cards[index]);
+        final backText = getBackDisplay(_cards[index]);
+
+        if (_readingMode == "앞뒤") {
           await _flutterTts.setLanguage(_frontLanguage);
-          if (!mounted) return;
-          setState(() {
-            _showMeaning = false;
-          });
-          debugPrint("TTS 시작: $frontText");
-          var result = await _flutterTts.speak(frontText);
-          debugPrint("TTS 호출 결과: $result");
-        } else if (_readingMode == "뒷면만") {
-          String backText = getBackDisplay(_cards[index]);
-          await _flutterTts.setLanguage(_backLanguage);
-          if (!mounted) return;
-          setState(() {
-            _showMeaning = true;
-          });
-          debugPrint("TTS 시작: $backText");
-          var result = await _flutterTts.speak(backText);
-          debugPrint("TTS 호출 결과: $result");
-        } else if (_readingMode == "앞뒤 번갈아 읽기") {
-          String frontText = getFrontDisplay(_cards[index]);
-          await _flutterTts.setLanguage(_frontLanguage);
-          if (!mounted) return;
-          setState(() {
-            _showMeaning = false;
-          });
-          debugPrint("TTS 시작 (앞면): $frontText");
+          setState(() => _showMeaning = false);
           await _flutterTts.speak(frontText);
           await Future.delayed(const Duration(milliseconds: 500));
-          String backText = getBackDisplay(_cards[index]);
+
           await _flutterTts.setLanguage(_backLanguage);
-          if (!mounted) return;
-          setState(() {
-            _showMeaning = true;
-          });
-          debugPrint("TTS 시작 (뒷면): $backText");
+          setState(() => _showMeaning = true);
           await _flutterTts.speak(backText);
-          await Future.delayed(const Duration(milliseconds: 700));
+
+        } else if (_readingMode == "뒤앞") {
+          await _flutterTts.setLanguage(_backLanguage);
+          setState(() => _showMeaning = true);
+          await _flutterTts.speak(backText);
+          await Future.delayed(const Duration(milliseconds: 500));
+
+          await _flutterTts.setLanguage(_frontLanguage);
+          setState(() => _showMeaning = false);
+          await _flutterTts.speak(frontText);
+
+        } else if (_readingMode == "앞면만") {
+          await _flutterTts.setLanguage(_frontLanguage);
+          setState(() => _showMeaning = false);
+          await _flutterTts.speak(frontText);
+
+        } else if (_readingMode == "뒷면만") {
+          await _flutterTts.setLanguage(_backLanguage);
+          setState(() => _showMeaning = true);
+          await _flutterTts.speak(backText);
         }
       } catch (e) {
         debugPrint("Error in _playCard: $e");
       }
+
       await Future.delayed(const Duration(milliseconds: 500));
     }
   }
