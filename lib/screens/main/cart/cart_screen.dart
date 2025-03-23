@@ -189,10 +189,9 @@ class CartScreen extends StatelessWidget {
                       final data = doc.data() as Map<String, dynamic>;
                       final type = data["type"] ?? "unknown";
                       final content = data["data"];
-                      final displayText = content["text"] ??
-                          content["word"] ??
-                          content["sentence"] ??
-                          "";
+                      final displayText = type == "custom"
+                          ? (content["name"] ?? "")
+                          : (content["text"] ?? content["word"] ?? content["sentence"] ?? "");
                       return ListTile(
                         leading: Icon(_getIcon(type)),
                         title: Text(displayText),
