@@ -9,7 +9,8 @@ import 'package:langarden_common/theme.dart';
 import 'package:langarden_common/providers/theme_provider.dart';
 import 'package:langarden_common/auth/auth_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
+import 'package:audio_service/audio_service.dart';
+import 'package:langbat/services/audio_handler.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
@@ -23,23 +24,37 @@ Future<void> main() async {
     print("Firebase initialization error: $e");
   }
 
+
+  // AudioService 초기화 — 백그라운드 TTS 핸들러 등록
+  final audioHandler = await AudioService.init(
+  builder: () => TTSBackgroundHandler(),
+  config: AudioServiceConfig(
+  androidNotificationChannelId: 'langbat.tts',
+  androidNotificationChannelName: 'TTS Playback',
+  androidNotificationOngoing: true,
+  ),);
+
+
   // SharedPreferences에서 autoLogin 설정 확인
   final prefs = await SharedPreferences.getInstance();
   final autoLogin = prefs.getBool('autoLogin') ?? false;
   final user = FirebaseAuth.instance.currentUser;
 
   runApp(
-    ProviderScope(
-      child: LangbatApp(autoLogin: autoLogin, user: user),
+      AudioServiceWidget(
+      child: ProviderScope(
+        child: LangbatApp(autoLogin: autoLogin, user: user, audioHandler: audioHandler,),
+      ),
     ),
   );
 }
 
 class LangbatApp extends ConsumerWidget {
+  final AudioHandler audioHandler;
   final bool autoLogin;
   final User? user;
 
-  const LangbatApp({super.key, required this.autoLogin, this.user});
+  const LangbatApp({super.key, required this.autoLogin, this.user, required this.audioHandler});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

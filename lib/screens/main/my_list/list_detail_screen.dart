@@ -1,6 +1,14 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:langbat/models/node_model.dart'; // Node, NodeType 공통 파일
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:cross_file/cross_file.dart'; // XFile을 사용하기 위한 import
+
+import 'package:langbat/services/template_service.dart'; // template_service.dart 에 nodeToJson, generateTemplateJson 함수 정의
 
 class ListDetailScreen extends StatefulWidget {
   final Node node; // 초기 데이터(참고용)
@@ -63,29 +71,6 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
     return node;
   }
 
-  Future<void> _saveAllChanges(Node node, DocumentReference docRef) async {
-    await docRef.set({
-      "name": node.name,
-      "type": node.type == NodeType.data ? "data" : "category",
-      "data": node.data,
-    }, SetOptions(merge: true));
-
-    for (var child in node.children) {
-      // 자식 문서가 없으면 create
-      if (child.docId == null) {
-        final newChildDoc = await docRef.collection('children').add({
-          "name": child.name,
-          "type": child.type == NodeType.data ? "data" : "category",
-          "data": child.data,
-        });
-        child.docId = newChildDoc.id;
-      } else {
-        // 이미 문서 있으면 set(merge: true)
-        DocumentReference childRef = docRef.collection('children').doc(child.docId);
-        await _saveAllChanges(child, childRef);
-      }
-    }
-  }
   // AppBar의 글로벌 저장 아이콘을 누르면 전체 변경사항을 Firestore에 업데이트
   Future<void> _globalSave() async {
     try {
@@ -98,6 +83,69 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
     } catch (e) {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text("저장 실패: $e")));
+    }
+  }
+
+  Future<void> _saveAllChanges(Node node, DocumentReference docRef) async {
+    await docRef.set({
+      "name": node.name,
+      "type": node.type == NodeType.data ? "data" : "category",
+      "data": node.data,
+    }, SetOptions(merge: true));
+
+    for (var child in node.children) {
+      if (child.docId == null) {
+        final newChildDoc = await docRef.collection('children').add({
+          "name": child.name,
+          "type": child.type == NodeType.data ? "data" : "category",
+          "data": child.data,
+        });
+        child.docId = newChildDoc.id;
+      } else {
+        DocumentReference childRef =
+        docRef.collection('children').doc(child.docId);
+        await _saveAllChanges(child, childRef);
+      }
+    }
+  }
+
+  /// 템플릿 다운로드 함수 (template_service.dart의 generateTemplateJson 사용)
+  Future<void> _downloadTemplate(BuildContext context) async {
+    try {
+      Node currentNode = await _futureNode;
+      // Node 전체 구조를 JSON 문자열로 변환
+      String jsonString = generateTemplateJson(currentNode);
+
+    // 콘솔에 JSON 문자열 출력
+    print("생성된 템플릿 JSON: $jsonString");
+
+    // RenderBox로 팝오버 위치 계산
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null) {
+      throw Exception("RenderBox를 찾을 수 없습니다.");
+    }
+    final rect = box.localToGlobal(Offset.zero) & box.size;
+
+      // 앱의 문서 디렉토리 경로 가져오기 및 파일 저장
+      final appDocDir = await getApplicationDocumentsDirectory();
+      final filePath = '${appDocDir.path}/template.json';
+      final file = File(filePath);
+      await file.writeAsString(jsonString);
+
+      // shareXFiles를 사용해 파일 공유 (iPad 팝오버 위치 지정)
+      await Share.shareXFiles(
+        [XFile(filePath)],
+        text: '실제 구조를 반영한 템플릿 JSON 파일입니다.',
+        sharePositionOrigin: rect,
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("템플릿 파일이 저장 및 공유되었습니다.")));
+    } catch (e, stacktrace) {
+      print('템플릿 생성 중 오류: $e');
+      print(stacktrace);
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("템플릿 생성 실패: $e")));
     }
   }
 
@@ -129,6 +177,15 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
               });
             },
           ),
+          Builder(
+            builder: (context) {
+              return IconButton(
+                icon: Icon(Icons.file_download),
+                tooltip: "템플릿 다운로드",
+                onPressed: () => _downloadTemplate(context),
+              );
+            },
+          )
         ],
       ),
       body: FutureBuilder<Node>(
@@ -154,8 +211,7 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
   }
 }
 
-/// NodeDetailWidget: 각 노드를 ExpansionTile으로 표시하고, 탭하면 편집 모드로 전환되어 TextField가 나타남.
-/// 개별 저장 버튼은 제거하고, TextField의 onEditingComplete 이벤트로 편집 모드를 종료함.
+/// NodeDetailWidget: 각 노드를 ExpansionTile로 표시하고, 탭하면 편집 모드로 전환
 class NodeDetailWidget extends StatefulWidget {
   final Node node;
   final int indentLevel;
@@ -165,12 +221,12 @@ class NodeDetailWidget extends StatefulWidget {
     super.key,
     required this.node,
     this.indentLevel = 0,
-    this.onDelete,});
+    this.onDelete,
+  });
 
   @override
   _NodeDetailWidgetState createState() => _NodeDetailWidgetState();
 }
-
 
 class _NodeDetailWidgetState extends State<NodeDetailWidget> {
   bool isExpanded = false;
@@ -209,7 +265,7 @@ class _NodeDetailWidgetState extends State<NodeDetailWidget> {
     });
   }
 
-  /// 하위 노드 추가 다이얼로그 (ListDetailScreen용)
+  /// 하위 노드 추가 다이얼로그
   void _addChildNode(BuildContext context, Node parent) {
     String childName = "";
     NodeType selectedType = NodeType.category;
@@ -232,72 +288,63 @@ class _NodeDetailWidgetState extends State<NodeDetailWidget> {
                   DropdownButton<NodeType>(
                     value: selectedType,
                     onChanged: (NodeType? newValue) {
-            setStateDialog (() {
-            selectedType = newValue!;
-            });
-            },
-            items: NodeType.values.map((NodeType type) {
-              return DropdownMenuItem<NodeType>(
-                value: type,
-                child: Text(type == NodeType.category ? "카테고리" : "데이터"),
-              );
-              }).toList(),
-            ),
-            if (selectedType == NodeType.data)
-            TextField(
-            decoration: InputDecoration(hintText: "뜻"),
-            onChanged: (value) => additionalData = value,
-            ),
-            ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () async {
-                  if (childName.trim().isNotEmpty) {
-                    // 1) Node 객체 생성
-                    Node newNode = Node(
-                      name: childName,
-                      type: selectedType,
-                      data: selectedType == NodeType.data
-                          ? {"뜻": additionalData}
-                          : {},
-                    );
-
-                    // 2) Firestore에 문서 추가
-                    //   parent.docId가 없으면 루트 문서인지 확인해야 함
-                    //   여기서는 parent가 이미 Firestore에 있다고 가정
-                    final parentRef = FirebaseFirestore.instance
-                        .collection('lists')
-                        .doc(parent.docId); // parent.docId가 null이면 별도 처리
-                    final childDoc = await parentRef
-                        .collection('children')
-                        .add({
-                      "name": newNode.name,
-                      "type": newNode.type == NodeType.data ? "data" : "category",
-                      "data": newNode.data,
-                    });
-
-                    // 3) 새 노드에 docId 설정
-                    newNode.docId = childDoc.id;
-
-                    setState(() {
-                      parent.children.add(newNode);
-                    });
-
-                    Navigator.of(context).pop();
-                  }
-                },
-                child: Text("추가"),
+                      setStateDialog(() {
+                        selectedType = newValue!;
+                      });
+                    },
+                    items: NodeType.values.map((NodeType type) {
+                      return DropdownMenuItem<NodeType>(
+                        value: type,
+                        child: Text(type == NodeType.category ? "카테고리" : "데이터"),
+                      );
+                    }).toList(),
+                  ),
+                  if (selectedType == NodeType.data)
+                    TextField(
+                      decoration: InputDecoration(hintText: "뜻"),
+                      onChanged: (value) => additionalData = value,
+                    ),
+                ],
               ),
-            ],
+              actions: [
+                TextButton(
+                  onPressed: () async {
+                    if (childName.trim().isNotEmpty) {
+                      Node newNode = Node(
+                        name: childName,
+                        type: selectedType,
+                        data: selectedType == NodeType.data
+                            ? {"뜻": additionalData}
+                            : {},
+                      );
+
+                      final parentRef = FirebaseFirestore.instance
+                          .collection('lists')
+                          .doc(parent.docId);
+                      final childDoc = await parentRef.collection('children').add({
+                        "name": newNode.name,
+                        "type": newNode.type == NodeType.data ? "data" : "category",
+                        "data": newNode.data,
+                      });
+
+                      newNode.docId = childDoc.id;
+
+                      setState(() {
+                        parent.children.add(newNode);
+                      });
+
+                      Navigator.of(context).pop();
+                    }
+                  },
+                  child: Text("추가"),
+                ),
+              ],
             );
           },
         );
       },
     );
   }
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -368,7 +415,8 @@ class _NodeDetailWidgetState extends State<NodeDetailWidget> {
           ],
         ),
         children: widget.node.children
-            .map((child) => NodeDetailWidget(node: child, indentLevel: widget.indentLevel + 1))
+            .map((child) =>
+            NodeDetailWidget(node: child, indentLevel: widget.indentLevel + 1))
             .toList(),
       ),
     );

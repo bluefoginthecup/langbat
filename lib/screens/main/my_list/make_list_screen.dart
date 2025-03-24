@@ -1,5 +1,9 @@
-import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
 import 'package:langbat/models/node_model.dart';
 
 class MakeListScreen extends StatefulWidget {
@@ -10,6 +14,22 @@ class MakeListScreen extends StatefulWidget {
 }
 
 class _MakeListScreenState extends State<MakeListScreen> {
+
+  Node _parseNode(Map<String, dynamic> json) {
+    return Node(
+      name: json['name'] ?? '',
+      type: (json['type']?.toLowerCase() == 'data')
+          ? NodeType.data
+          : NodeType.category,
+      data: json['data'] != null
+          ? Map<String, String>.from(json['data'])
+          : {},
+      children: (json['children'] as List<dynamic>? ?? [])
+          .map((child) => _parseNode(child as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
   List<Node> lists = [];
 
   @override
@@ -24,6 +44,13 @@ class _MakeListScreenState extends State<MakeListScreen> {
             tooltip: "새 리스트 생성",
             onPressed: () => _createNewList(context),
           ),
+          // 대량 업로드 버튼
+          IconButton(
+            icon: Icon(Icons.file_upload),
+            tooltip: "대량 업로드",
+            onPressed: _bulkUpload,
+          ),
+          // 저장 버튼
           IconButton(
             icon: Icon(Icons.save),
             tooltip: "저장",
@@ -79,7 +106,9 @@ class _MakeListScreenState extends State<MakeListScreen> {
   Future<void> _saveToFirebase() async {
     try {
       for (var listNode in lists) {
-        DocumentReference listDoc = await FirebaseFirestore.instance.collection('lists').add({
+        DocumentReference listDoc = await FirebaseFirestore.instance
+            .collection('lists')
+            .add({
           'name': listNode.name,
           'type': listNode.type == NodeType.category ? 'category' : 'data',
           'data': listNode.data,
@@ -99,7 +128,8 @@ class _MakeListScreenState extends State<MakeListScreen> {
   }
 
   // 하위 노드들을 재귀적으로 저장
-  Future<void> _saveChildren(List<Node> children, DocumentReference parentDoc) async {
+  Future<void> _saveChildren(
+      List<Node> children, DocumentReference parentDoc) async {
     for (var child in children) {
       DocumentReference childDoc = await parentDoc.collection('children').add({
         'name': child.name,
@@ -109,6 +139,31 @@ class _MakeListScreenState extends State<MakeListScreen> {
       if (child.children.isNotEmpty) {
         await _saveChildren(child.children, childDoc);
       }
+    }
+  }
+
+  // 대량 업로드 함수: file_picker를 사용해 JSON 파일 선택 후 파싱하여 새로운 리스트 생성
+  Future<void> _bulkUpload() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.custom, allowedExtensions: ['json'],
+    );
+    if (result?.files.single.path == null) return;
+
+    String content = await File(result!.files.single.path!).readAsString();
+    final jsonData = jsonDecode(content);
+    if (jsonData is List) {
+      setState(() {
+        lists.addAll(
+            jsonData.map((e) => _parseNode(e as Map<String, dynamic>))
+        );
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("대량 업로드 완료")),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("JSON 형식 오류")),
+      );
     }
   }
 }
@@ -273,7 +328,9 @@ class _NodeWidgetState extends State<NodeWidget> {
                         Node newNode = Node(
                           name: childName,
                           type: selectedType,
-                          data: selectedType == NodeType.data ? {"뜻": additionalData} : {},
+                          data: selectedType == NodeType.data
+                              ? {"뜻": additionalData}
+                              : {},
                         );
                         parent.children.add(newNode);
                       });

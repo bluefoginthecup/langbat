@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:langarden_common/widgets/tts_controls.dart';
 import 'package:langarden_common/widgets/icon_button.dart';
+import 'package:audio_service/audio_service.dart';
+
 
 /// 변경됨: Firestore 데이터가 top-level에 "text"와 "meaning" 필드를 두고 있다고 가정
 String getFrontDisplay(Map<String, dynamic> card) {
@@ -137,16 +139,23 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     });
   }
 
+
   void _toggleTTS() {
     debugPrint("DEBUG: _toggleTTS 호출됨. isPlaying: $_isPlaying, isPaused: $_isPaused");
+
     if (_isPlaying) {
-      _pauseTTS();
+      AudioService.pause();// 백그라운드 제어
+      _pauseTTS();        // 기존 TTS 중지
     } else if (_isPaused) {
-      _resumeTTS();
+      AudioService.play();     // 백그라운드 제어
+      _resumeTTS();       // 기존 TTS 재개
     } else {
-      _startTTS();
+      AudioService.play();     // 백그라운드 제어
+      _startTTS();        // 기존 TTS 시작
     }
   }
+
+
   Future<void> _playCard(int index) async {
     if (!mounted) return;
     setState(() {

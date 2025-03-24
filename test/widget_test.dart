@@ -9,11 +9,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:langbat/main.dart';
+import 'package:audio_service/audio_service.dart';
+
+/// 테스트용 빈 AudioHandler
+class FakeAudioHandler extends BaseAudioHandler {}
 
 void main() {
   testWidgets('Counter increments smoke test', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(LangbatApp(autoLogin: true));
+    await tester.pumpWidget(LangbatApp(autoLogin: true,audioHandler: FakeAudioHandler(), // ← 여기 추가
+    ));
 
     // Verify that our counter starts at 0.
     expect(find.text('0'), findsOneWidget);
