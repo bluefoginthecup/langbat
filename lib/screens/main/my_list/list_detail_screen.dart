@@ -44,7 +44,10 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
       docId: docSnap.id,
     );
 
-    QuerySnapshot childrenSnap = await docRef.collection('children').get();
+    QuerySnapshot childrenSnap = await docRef
+        .collection('children')
+        .orderBy('order')
+        .get();
     for (var childDoc in childrenSnap.docs) {
       Node childNode = await _fetchChildNode(childDoc.reference);
       fetchedNode.children.add(childNode);
@@ -63,7 +66,10 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
       docId: docSnap.id,
     );
 
-    QuerySnapshot childrenSnap = await docRef.collection('children').get();
+    QuerySnapshot childrenSnap = await docRef
+        .collection('children')
+        .orderBy('order')
+        .get();
     for (var childDoc in childrenSnap.docs) {
       Node childNode = await _fetchChildNode(childDoc.reference);
       node.children.add(childNode);

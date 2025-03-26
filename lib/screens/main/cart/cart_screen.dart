@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../study/flashcard/flashcard_set_edit_screen.dart';
 import '/models/node_model.dart'; // Node 및 NodeType을 가져옵니다.
+import '/services/flatten_util.dart';
+
+
 
 /// 기존 동사 리스트의 subcard 생성 함수
 List<Map<String, dynamic>> buildSubcardsFromVerb(Map<String, dynamic> verbData) {
@@ -273,25 +276,33 @@ class CartScreen extends StatelessWidget {
         // 기존 동사 리스트 처리
         subcards = buildSubcardsFromVerb(docData["data"]);
       } else if (type == "custom") {
-        final listDocId = docData["originalId"];
-        if (listDocId == null) {
-          print("ERROR: custom 문서인데 originalId가 없음");
-          continue;
-        }
-        final listDocSnap = await FirebaseFirestore.instance
-            .collection('lists')
-            .doc(listDocId)
-            .get();
-        if (!listDocSnap.exists) {
-          print("ERROR: lists/$listDocId 문서가 존재하지 않음");
-          continue;
-        }
-        // 원본 lists 문서를 Node로 변환
-        final customNode = await buildNodeFromDocument(listDocSnap);
-        subcards = flattenCustomList(customNode);
-      }
+    final listDocId = docData["originalId"];
+    if (listDocId == null) {
+    print("ERROR: custom 문서인데 originalId가 없음");
+    continue;
+    }
+    final listDocSnap = await FirebaseFirestore.instance
+        .collection('lists')
+        .doc(listDocId)
+        .get();
+    if (!listDocSnap.exists) {
+    print("ERROR: lists/$listDocId 문서가 존재하지 않음");
+    continue;
+    }
+    // 원본 lists 문서를 Node로 변환
+    final customNode = await buildNodeFromDocument(listDocSnap);
+    // flattenTree() 함수를 이용해 전체 노드를 평탄화하고 전역 순서를 재할당
+    List<Node> flatNodes = flattenTree(customNode);
+    // 평탄화된 Node 리스트를 flashcard용 Map 리스트로 변환
+    subcards = flatNodes.map((node) => {
+    "text": node.name,
+    "meaning": node.data["뜻"] ?? "",
+    "order": node.order,
+    }).toList();
+    }
 
-      // subcards 정렬
+
+    // subcards 정렬
       subcards.sort((a, b) => (a["order"] as int).compareTo(b["order"] as int));
 
       // 각 subcard를 flashcard 세트 items 하위 컬렉션에 저장

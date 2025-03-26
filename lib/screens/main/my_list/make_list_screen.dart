@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -15,22 +14,34 @@ class MakeListScreen extends StatefulWidget {
 
 class _MakeListScreenState extends State<MakeListScreen> {
 
-  Node _parseNode(Map<String, dynamic> json) {
-    return Node(
-      name: json['name'] ?? '',
-      type: (json['type']?.toLowerCase() == 'data')
-          ? NodeType.data
-          : NodeType.category,
-      data: json['data'] != null
-          ? Map<String, String>.from(json['data'])
-          : {},
-      children: (json['children'] as List<dynamic>? ?? [])
-          .map((child) => _parseNode(child as Map<String, dynamic>))
-          .toList(),
-    );
+Node _parseNode(Map<String, dynamic> json,
+    [int defaultOrder = 0]) {
+  List<dynamic> childrenJson =
+      json['children'] as List<dynamic>? ?? [];
+  List<Node> children = [];
+  for (int i = 0; i < childrenJson.length; i++) {
+    children.add(_parseNode(childrenJson[i] as Map<String, dynamic>, i));
   }
+  return Node(
+    name: json['name'] ?? '',
+    type: (json['type']?.toLowerCase() == 'data')
+        ? NodeType.data
+        : NodeType.category,
+    data: json['data'] != null
+        ? Map<String, String>.from(json['data'])
+        : {},
+    children: children,
+    order: json['order'] ?? defaultOrder,
+  );
+}
+
+
+
 
   List<Node> lists = [];
+
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -194,49 +205,49 @@ class _NodeWidgetState extends State<NodeWidget> {
             return AlertDialog(
               title: Text("노드 편집"),
               content: Padding(
-                  padding: MediaQuery.of(context).viewInsets,
-                  child: SingleChildScrollView(
+                padding: MediaQuery.of(context).viewInsets,
+                child: SingleChildScrollView(
                   child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.4, // 화면 높이의 40% 정도로 제한
-            ),
-            child: Padding(
-            // 아래쪽에 약간의 패딩 추가
-            padding: const EdgeInsets.only(bottom: 18.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: TextEditingController(text: newName),
-                    decoration: InputDecoration(labelText: "이름"),
-                    onChanged: (value) => newName = value,
-                  ),
-                  SizedBox(height: 10),
-                  DropdownButton<NodeType>(
-                    value: selectedType,
-                    onChanged: (NodeType? newValue) {
-                      if (newValue != null) {
-                        setStateDialog(() {
-                          selectedType = newValue;
-                        });
-                      }
-                    },
-                    items: NodeType.values.map((NodeType type) {
-                      return DropdownMenuItem<NodeType>(
-                        value: type,
-                        child: Text(type == NodeType.category ? "카테고리" : "데이터"),
-                      );
-                    }).toList(),
-                  ),
-                  if (selectedType == NodeType.data)
-                    TextField(
-                      controller: TextEditingController(text: additionalData),
-                      decoration: InputDecoration(labelText: "뜻"),
-                      onChanged: (value) => additionalData = value,
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.4, // 화면 높이의 40% 정도로 제한
                     ),
-                ],
-              ),
-                ),),
+                    child: Padding(
+                      // 아래쪽에 약간의 패딩 추가
+                      padding: const EdgeInsets.only(bottom: 18.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          TextField(
+                            controller: TextEditingController(text: newName),
+                            decoration: InputDecoration(labelText: "이름"),
+                            onChanged: (value) => newName = value,
+                          ),
+                          SizedBox(height: 10),
+                          DropdownButton<NodeType>(
+                            value: selectedType,
+                            onChanged: (NodeType? newValue) {
+                              if (newValue != null) {
+                                setStateDialog(() {
+                                  selectedType = newValue;
+                                });
+                              }
+                            },
+                            items: NodeType.values.map((NodeType type) {
+                              return DropdownMenuItem<NodeType>(
+                                value: type,
+                                child: Text(type == NodeType.category ? "카테고리" : "데이터"),
+                              );
+                            }).toList(),
+                          ),
+                          if (selectedType == NodeType.data)
+                            TextField(
+                              controller: TextEditingController(text: additionalData),
+                              decoration: InputDecoration(labelText: "뜻"),
+                              onChanged: (value) => additionalData = value,
+                            ),
+                        ],
+                      ),
+                    ),),
                 ),
               ),
               actions: [
