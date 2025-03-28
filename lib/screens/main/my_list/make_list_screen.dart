@@ -146,6 +146,7 @@ Node _parseNode(Map<String, dynamic> json,
         'name': child.name,
         'type': child.type == NodeType.category ? 'category' : 'data',
         'data': child.data,
+        'order': child.order, // order 값 추가
       });
       if (child.children.isNotEmpty) {
         await _saveChildren(child.children, childDoc);

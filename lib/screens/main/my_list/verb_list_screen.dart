@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../input/verb_detail_input_screen.dart' show VerbDetailInputScreen;
 import 'package:langarden_common/widgets/multi_select_actions.dart';
+import 'package:langarden_common/utils/trash_manager.dart';
+
 import '../cart/cart_screen.dart';
+
 
 class VerbListScreen extends StatefulWidget {
   const VerbListScreen({super.key});
@@ -42,61 +45,19 @@ class _VerbListScreenState extends State<VerbListScreen> {
 
   // 선택된 동사들을 휴지통으로 보내는 함수 (기존 로직 사용)
   Future<void> sendSelectedToTrash() async {
-    final confirm = await showDialog<bool>(
+    await TrashManager.moveItemsToTrash(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("휴지통으로 이동 확인"),
-        content: const Text("선택한 동사를 휴지통으로 보내시겠습니까?"),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text("취소"),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text("확인"),
-          ),
-        ],
-      ),
+      docIds: selectedIds.toList(),
+      originalCollection: 'verbs',
+      trashCollection: 'trash',
+      itemType: 'verb',
     );
-    if (confirm != true) return;
-
-    try {
-      WriteBatch batch = FirebaseFirestore.instance.batch();
-      final verbsRef = FirebaseFirestore.instance.collection('verbs');
-      final trashRef = FirebaseFirestore.instance.collection('trash');
-
-      for (var docId in selectedIds) {
-        final docSnapshot = await verbsRef.doc(docId).get();
-        if (docSnapshot.exists) {
-          final data = docSnapshot.data();
-          if (data != null) {
-            final trashData = {
-              "type": "verb",
-              "originalId": docId,
-              "data": data,
-              "deletedAt": FieldValue.serverTimestamp(),
-            };
-            final trashDocRef = trashRef.doc(docId);
-            batch.set(trashDocRef, trashData);
-            batch.delete(verbsRef.doc(docId));
-          }
-        }
-      }
-      await batch.commit();
-      setState(() {
-        selectedIds.clear();
-        multiSelectMode = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("선택한 동사가 휴지통으로 이동되었습니다.")),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("휴지통 이동 실패: $e")),
-      );
-    }
+    setState(() {
+      selectedIds.clear();
+      multiSelectMode = false;
+    });
   }
+
 
   Future<void> addSelectedToCart() async {
     final cartRef = FirebaseFirestore.instance.collection('cart');

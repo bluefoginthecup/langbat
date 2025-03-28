@@ -5,6 +5,7 @@ import 'package:langbat/models/node_model.dart'; // 공통 Node, NodeType 사용
 import 'list_detail_screen.dart'; // 상세 화면
 import 'make_list_screen.dart';   // 새 리스트 생성 화면
 import 'package:langarden_common/widgets/multi_select_actions.dart'; // 멀티 선택 액션 위젯 (구현된 경우)
+import 'package:langarden_common/utils/trash_manager.dart';
 
 class CustomListScreen extends StatefulWidget {
   const CustomListScreen({super.key});
@@ -77,6 +78,21 @@ class _CustomListScreenState extends State<CustomListScreen> {
     );
   }
 
+  Future<void> sendSelectedToTrash() async {
+    await TrashManager.moveItemsToTrash(
+      context: context,
+      docIds: selectedIds.toList(),
+      originalCollection: 'lists',  // 커스텀 리스트가 저장된 컬렉션
+      trashCollection: 'trash',     // 휴지통 컬렉션
+      itemType: 'custom',           // 항목 타입
+    );
+    setState(() {
+      selectedIds.clear();
+      multiSelectMode = false;
+    });
+  }
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -116,7 +132,7 @@ class _CustomListScreenState extends State<CustomListScreen> {
                 MultiSelectActions(
                   allSelected: selectedIds.length == docs.length,
                   onToggleSelectAll: () => toggleSelectAll(docs),
-                  onTrash: () {}, // 필요 시 구현 (예: 휴지통 이동)
+                  onTrash: selectedIds.isEmpty ? () {} : sendSelectedToTrash,
                   onCart: addSelectedToCart,
                 ),
               Expanded(
