@@ -1,4 +1,5 @@
 // lib/main.dart
+import 'package:langbat/screens/auth/character_check_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart'; // Riverpod import
 import 'package:firebase_core/firebase_core.dart';
@@ -74,14 +75,14 @@ class LangbatApp extends ConsumerWidget {
         );
       },
       home: (autoLogin && user != null)
-          ? MainScreen()
+          ? CharacterCheckScreen()
           : AuthScreen(
         onAuthSuccess: (User user) async {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('autoLogin', true);
           // navigatorKey를 통해 Navigator 작업 수행
           navigatorKey.currentState?.pushReplacement(
-            MaterialPageRoute(builder: (_) => MainScreen()),
+            MaterialPageRoute(builder: (_) => CharacterCheckScreen()),
           );
         },
       ),

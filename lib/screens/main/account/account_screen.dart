@@ -36,6 +36,8 @@ class AccountScreen extends StatelessWidget {
     );
   }
 
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -58,12 +60,23 @@ class AccountScreen extends StatelessWidget {
     child: Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-    Text('이메일: ${data['email'] ?? '정보 없음'}', style: const TextStyle(fontSize: 16)),
+      Text('내 캐릭터: ${data['character'] ?? '선택되지 않음'}',
+          style: const TextStyle(fontSize: 16)),
+      const SizedBox(height: 12),
+      if (data['character'] != null)
+        Center(
+          child: Image.asset(
+            'assets/characters/${_characterToImageFile(data['character'])}',
+            height: 150,
+          ),
+        ),
+      const SizedBox(height: 8),
+      Text('이름: ${data['name'] ?? '정보 없음'}', style: const TextStyle(fontSize: 16)),
+      const SizedBox(height: 8),
+      Text('이메일: ${data['email'] ?? '정보 없음'}', style: const TextStyle(fontSize: 16)),
     const SizedBox(height: 8),
     // 비밀번호는 표시할 수 없습니다.
     Text('전화번호: ${data['phone'] ?? '정보 없음'}', style: const TextStyle(fontSize: 16)),
-    const SizedBox(height: 8),
-    Text('이름: ${data['name'] ?? '정보 없음'}', style: const TextStyle(fontSize: 16)),
     const Spacer(),
     Row(
     mainAxisAlignment: MainAxisAlignment.center,
@@ -92,5 +105,19 @@ class AccountScreen extends StatelessWidget {
     ),
     );
 
+  }String _characterToImageFile(String characterName) {
+    switch (characterName) {
+      case '농부':
+        return 'farmer.png';
+      case '까마귀':
+        return 'crow.png';
+      case '생쥐':
+        return 'mouse.png';
+      case '당나귀':
+        return 'donkey.png';
+      default:
+        return 'farmer.png';
+    }
   }
+
 }

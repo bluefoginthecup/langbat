@@ -34,6 +34,7 @@ dependencies:
   share_plus: ^10.1.4
   file_picker: ^9.2.1
   firebase_core: ^3.12.1
+  flutter_swiper_view: ^1.1.6
   langarden_common:
     path: ../langarden_common
 
@@ -50,7 +51,7 @@ dependencies:
   audio_service: any
   just_audio: ^0.9.46
   firebase_auth: any
-  shared_preferences: any
+  shared_preferences: ^2.5.3
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -77,7 +78,8 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
-
+  assets:
+    - assets/characters/
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg
