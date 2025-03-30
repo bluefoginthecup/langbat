@@ -71,6 +71,8 @@ class AccountScreen extends StatelessWidget {
           ),
         ),
       const SizedBox(height: 8),
+      Text('포인트: ${data['points'] ?? 0}점', style: const TextStyle(fontSize: 16)),
+      const SizedBox(height: 8),
       Text('이름: ${data['name'] ?? '정보 없음'}', style: const TextStyle(fontSize: 16)),
       const SizedBox(height: 8),
       Text('이메일: ${data['email'] ?? '정보 없음'}', style: const TextStyle(fontSize: 16)),
