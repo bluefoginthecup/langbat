@@ -37,6 +37,7 @@ class FlashcardStudyScreen extends StatefulWidget {
 }
 
 class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
+  double _fontSize = 28.0;
   int _currentIndex = 0;
   bool _showMeaning = false;
   late List<Map<String, dynamic>> _cards;
@@ -321,7 +322,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
                     children: [
                       Text(
                         displayText,
-                        style: const TextStyle(fontSize: 28),
+                        style: TextStyle(fontSize: _fontSize),
                         textAlign: TextAlign.center,
                       ),
                     ],
@@ -358,6 +359,11 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
             onCardSliderChanged: _onCardSliderChanged,
             onChangeFrontLanguage: _changeFrontLanguage,
             onChangeBackLanguage: _changeBackLanguage,
+            onFontSizeChanged: (newSize) {
+              setState(() {
+                _fontSize = newSize;
+              });
+            },
             currentCardIndex: _currentIndex,
             totalCards: _cards.length,
             isPlaying: _isPlaying,

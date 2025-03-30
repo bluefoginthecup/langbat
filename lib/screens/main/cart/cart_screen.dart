@@ -100,7 +100,10 @@ Future<Node> buildNodeFromDocument(DocumentSnapshot docSnap) async {
     children: [],
   );
 
-  final childrenSnap = await docSnap.reference.collection('children').get();
+  final childrenSnap = await docSnap.reference
+      .collection('children')
+      .orderBy('sortIndex')
+      .get();
   for (final child in childrenSnap.docs) {
     node.children.add(await buildNodeFromDocument(child));
   }
@@ -108,24 +111,27 @@ Future<Node> buildNodeFromDocument(DocumentSnapshot docSnap) async {
 }
 
 /// Node 트리 → 평탄화 리스트 (플래시카드)
-List<Map<String, dynamic>> flattenCustomList(Node node) {
-  final cards = <Map<String, dynamic>>[];
+List<Node> flattenTree(Node node, [int orderStart = 0]) {
+  final List<Node> flatList = [];
+  int currentOrder = orderStart;
 
-  // Leaf 노드거나 category지만 자식이 없는 경우 카드 추가
-  if (node.type == NodeType.data || (node.children.isEmpty && node.name.isNotEmpty)) {
-    cards.add({
-      "text": node.name,
-      "meaning": node.data["뜻"] ?? "",
-      "order": 0,
-    });
+  void traverse(Node n) {
+    // 노드에 order 부여
+    n.order = currentOrder++;
+    flatList.add(n);
+    for (var child in n.children) {
+      traverse(child);
+    }
   }
 
-  for (var child in node.children) {
-    cards.addAll(flattenCustomList(child));
-  }
-  print("Node '${node.name}' 평탄화 결과: $cards");
-  return cards;
+  traverse(node);
+
+  // 정렬은 필요에 따라 여기서도 가능하지만, order 지정돼 있으니 생략 가능
+  return flatList;
 }
+
+
+
 class CartScreen extends StatelessWidget {
   const CartScreen({Key? key}) : super(key: key);
 

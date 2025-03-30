@@ -13,30 +13,31 @@ class MakeListScreen extends StatefulWidget {
 }
 
 class _MakeListScreenState extends State<MakeListScreen> {
+  Node _parseNode(Map<String, dynamic> json) {
+    final List<dynamic> childrenJson = json['children'] as List<dynamic>? ?? [];
+    // JSON에 들어있는 order 필드는 무시하고, 배열 순서만 유지
+    // 그래서 json['order']는 쓰지 않음
 
-Node _parseNode(Map<String, dynamic> json,
-    [int defaultOrder = 0]) {
-  List<dynamic> childrenJson =
-      json['children'] as List<dynamic>? ?? [];
-  List<Node> children = [];
-  for (int i = 0; i < childrenJson.length; i++) {
-    children.add(_parseNode(childrenJson[i] as Map<String, dynamic>, i));
+    // 자식 노드 파싱
+    List<Node> children = [];
+    for (int i = 0; i < childrenJson.length; i++) {
+      final childMap = childrenJson[i] as Map<String, dynamic>;
+      children.add(_parseNode(childMap));
+    }
+
+    return Node(
+      name: json['name'] ?? '',
+      type: (json['type']?.toLowerCase() == 'data')
+          ? NodeType.data
+          : NodeType.category,
+      data: json['data'] != null
+          ? Map<String, String>.from(json['data'])
+          : {},
+      children: children,
+      // JSON의 order는 무시. 대신 parseNode에서는 그냥 0 저장해둬도 상관없음
+      order: 0,
+    );
   }
-  return Node(
-    name: json['name'] ?? '',
-    type: (json['type']?.toLowerCase() == 'data')
-        ? NodeType.data
-        : NodeType.category,
-    data: json['data'] != null
-        ? Map<String, String>.from(json['data'])
-        : {},
-    children: children,
-    order: json['order'] ?? defaultOrder,
-  );
-}
-
-
-
 
   List<Node> lists = [];
 
@@ -141,12 +142,14 @@ Node _parseNode(Map<String, dynamic> json,
   // 하위 노드들을 재귀적으로 저장
   Future<void> _saveChildren(
       List<Node> children, DocumentReference parentDoc) async {
-    for (var child in children) {
+    for (int i = 0; i < children.length; i++) {
+      final child = children[i];
+      // child.order는 무시하고 i(배열 인덱스)를 sortIndex로 사용
       DocumentReference childDoc = await parentDoc.collection('children').add({
         'name': child.name,
         'type': child.type == NodeType.category ? 'category' : 'data',
         'data': child.data,
-        'order': child.order, // order 값 추가
+        'sortIndex': i,  // 이 값으로 Firestore에서 순서를 복원
       });
       if (child.children.isNotEmpty) {
         await _saveChildren(child.children, childDoc);
