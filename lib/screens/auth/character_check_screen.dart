@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../onboarding/onboarding_screen.dart';
 import '../main/main_screen.dart';
+import 'package:langbat/services/point_service.dart';
 
 class CharacterCheckScreen extends StatelessWidget {
   const CharacterCheckScreen({super.key});
@@ -27,9 +28,13 @@ class CharacterCheckScreen extends StatelessWidget {
     final today = DateTime.now().toIso8601String().substring(0, 10);
     if (data['lastLoginDate'] != today) {
       await userRef.update({
-        'points': FieldValue.increment(10),
         'lastLoginDate': today,
       });
+      await PointService.addPoint(
+        amount: 10,
+        type: 'daily_login',
+        description: '하루 첫 접속 보상',
+      );
     }
 
     return hasCharacter ? const MainScreen() : const OnboardingScreen();

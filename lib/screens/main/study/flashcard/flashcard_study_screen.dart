@@ -6,6 +6,9 @@ import 'package:langarden_common/utils/tts_settings.dart';
 import 'package:langarden_common/widgets/tts_controls.dart';
 import 'package:langarden_common/widgets/icon_button.dart';
 import 'package:audio_service/audio_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:langbat/services/point_service.dart';
 
 class FlashcardStudyScreen extends StatefulWidget {
   final List<Map<String, dynamic>> flashcards;
@@ -17,6 +20,7 @@ class FlashcardStudyScreen extends StatefulWidget {
 }
 
 class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
+  int? _lastPointedIndex;
   int _currentIndex = 0;
   bool _showMeaning = false;
   late List<Map<String, dynamic>> _cards;
@@ -256,6 +260,14 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       }
 
       await Future.delayed(const Duration(milliseconds: 500));
+      if (_lastPointedIndex != index) {
+        await PointService.addPoint(
+          amount: 1,
+          type: 'flashcard_play',
+          description: '플래시카드 재생 1회',
+        );
+        _lastPointedIndex = index;
+      }
     }
   }
 
@@ -281,6 +293,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
 
       await _playCard(index);
       index = (index + 1) % _cards.length;
+
     }
 
     await _flutterTts.stop();

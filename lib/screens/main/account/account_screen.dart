@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:langarden_common/auth/auth_screen.dart';
 import 'package:langbat/screens/main/main_screen.dart';
 import 'package:langarden_common/auth/profile_update_screen.dart'; // 회원정보 수정 페이지
+import 'package:langbat/screens/main/account/point_log_screen.dart';
 
 
 class AccountScreen extends StatelessWidget {
@@ -71,15 +72,33 @@ class AccountScreen extends StatelessWidget {
           ),
         ),
       const SizedBox(height: 8),
-      Text('포인트: ${data['points'] ?? 0}점', style: const TextStyle(fontSize: 16)),
-      const SizedBox(height: 8),
       Text('이름: ${data['name'] ?? '정보 없음'}', style: const TextStyle(fontSize: 16)),
       const SizedBox(height: 8),
       Text('이메일: ${data['email'] ?? '정보 없음'}', style: const TextStyle(fontSize: 16)),
     const SizedBox(height: 8),
     // 비밀번호는 표시할 수 없습니다.
     Text('전화번호: ${data['phone'] ?? '정보 없음'}', style: const TextStyle(fontSize: 16)),
-    const Spacer(),
+      const SizedBox(height: 8),
+      Text('포인트: ${data['points'] ?? 0}점', style: const TextStyle(fontSize: 16)),
+      const SizedBox(height: 24),
+      Center(
+        child: ElevatedButton.icon(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const PointLogScreen()),
+            );
+          },
+          icon: const Icon(Icons.history),
+          label: const Text('포인트 내역 보기'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            textStyle: const TextStyle(fontSize: 16),
+          ),
+        ),
+      ),
+      const Spacer(),
     Row(
     mainAxisAlignment: MainAxisAlignment.center,
     children: [
