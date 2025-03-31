@@ -5,6 +5,7 @@ import 'account/account_screen.dart';
 import 'input/input_screen.dart';
 import 'my_list/my_list_screen.dart';
 import 'study/study_screen.dart';
+import 'garden/garden_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -23,6 +24,7 @@ class _MainScreenState extends State<MainScreen> {
     InputScreen(),    // 세 번째 탭: 입력 화면
     MyListScreen(),   // 네 번째 탭: 내 리스트
     StudyScreen(),    // 다섯 번째 탭: 학습 화면
+    GardenScreen(),   // 여섯 번째 탭: 정원
   ];
 
   void _onItemTapped(int index) {
@@ -65,6 +67,11 @@ class _MainScreenState extends State<MainScreen> {
             icon: Icon(Icons.school),
             label: '학습',
           ),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.park),
+              label: '정원'
+          ),
+
         ],
       ),
     );

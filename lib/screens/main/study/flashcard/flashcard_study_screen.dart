@@ -2,13 +2,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:langarden_common/utils/tts_settings.dart';
 import 'package:langarden_common/widgets/tts_controls.dart';
 import 'package:langarden_common/widgets/icon_button.dart';
 import 'package:audio_service/audio_service.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:langbat/services/point_service.dart';
+
 
 class FlashcardStudyScreen extends StatefulWidget {
   final List<Map<String, dynamic>> flashcards;
@@ -20,39 +18,245 @@ class FlashcardStudyScreen extends StatefulWidget {
 }
 
 class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
-  int? _lastPointedIndex;
-  int _currentIndex = 0;
-  bool _showMeaning = false;
-  late List<Map<String, dynamic>> _cards;
-  final bool _repeatEnabled = false;
-  bool _shuffleEnabled = false;
-  String _readingMode = "앞뒤";
-  int _repeatCount = 1;
-  int _timerMinutes = 0;
-  bool _isPlaying = false;
-  bool _isPaused = false;
-  final FlutterTts _flutterTts = FlutterTts();
-  String _frontLanguage = "es-ES";
-  String _backLanguage = "ko-KR";
-  double _fontSize = 28.0;
-  double _ttsSpeed = 0.5;
+int _playCount = 0;
+int _currentIndex = 0;
+bool _showMeaning = false;
+late List<Map<String, dynamic>> _cards;
+final bool _repeatEnabled = false;
+bool _shuffleEnabled = false;
+String _readingMode = "앞뒤";
+int _repeatCount = 1;
+int _timerMinutes = 0;
+bool _isPlaying = false;
+bool _isPaused = false;
+final FlutterTts _flutterTts = FlutterTts();
+String _frontLanguage = "es-ES";
+String _backLanguage = "ko-KR";
+double _fontSize = 28.0;
+double _ttsSpeed = 0.5;
 
-  Timer? _countdownTimer;
-  Duration? _remainingTime;
+Timer? _countdownTimer;
+Duration? _remainingTime;
 
-  @override
-  void initState() {
-    super.initState();
-    _cards = List.from(widget.flashcards);
-    _flutterTts.setSpeechRate(_ttsSpeed);
-    _flutterTts.setVolume(1.0);
-    _flutterTts.setPitch(1.0);
-    _flutterTts.awaitSpeakCompletion(true);
-    _flutterTts.setIosAudioCategory(
-      IosTextToSpeechAudioCategory.playback,
-      [IosTextToSpeechAudioCategoryOptions.mixWithOthers],
-    );
-    loadTTSSettingsLocally();
+@override
+void initState() {
+super.initState();
+_cards = List.from(widget.flashcards);
+_flutterTts.setSpeechRate(_ttsSpeed);
+_flutterTts.setVolume(1.0);
+_flutterTts.setPitch(1.0);
+_flutterTts.awaitSpeakCompletion(true);
+_flutterTts.setIosAudioCategory(
+IosTextToSpeechAudioCategory.playback,
+[IosTextToSpeechAudioCategoryOptions.mixWithOthers],
+);
+loadTTSSettingsLocally();
+}
+
+Future<bool> _onWillPop() async {
+  await _givePoints();
+  final shouldExit = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text("학습을 종료할까요?"),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.of(context).pop(false);
+            showDialog(
+              context: context,
+              builder: (BuildContext dialogContext) => AlertDialog(
+                content: const Text("좋아요, 더 열심히 해봐요! 🔥"),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      if (!mounted) return;
+                      Navigator.of(dialogContext).pop();
+            },
+                    child: const Text("확인"),
+                  ),
+                ],
+              ),
+            );
+          },
+          child: const Text("취소"),
+        ),
+        TextButton(
+          onPressed: () async {
+            Navigator.of(context).pop(true);
+            await Future.delayed(Duration(milliseconds: 100)); // context 안정화 대기
+            if (!mounted) return;
+            await _givePoints();
+            showDialog(
+              context: context,
+              builder: (context) {
+                return AlertDialog(
+                content: Text(
+                  "지금까지 플래시카드 ${_playCount}장을 학습했어요!\n+${_playCount}점이 적립됩니다 🎁",
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text("확인"),
+                  ),
+                ],
+              );
+                },
+            );
+          },
+          child: const Text("종료"),
+        ),
+      ],
+    ),
+  );
+  return shouldExit ?? false;
+}
+
+@override
+Widget build(BuildContext context) {
+  if (_cards.isEmpty) {
+  return Scaffold(
+    appBar: AppBar(title: const Text("플래시카드 학습")),
+    body: const Center(child: Text("학습할 카드가 없습니다.")),
+  );
+}
+
+final currentCard = _cards[_currentIndex];
+final displayText = _showMeaning
+    ? currentCard["meaning"] ?? ""
+    : currentCard["text"] ?? "";
+
+return WillPopScope(
+  onWillPop: _onWillPop,
+  child: Scaffold(
+    appBar: AppBar(title: const Text("플래시카드 학습")),
+    body: Column(
+      children: [
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  AppIconButton(icon: Icons.first_page, onPressed: _goToFirstCard),
+                  AppIconButton(
+                    icon: Icons.arrow_back,
+                    onPressed: _currentIndex > 0 || _repeatEnabled ? _goToPreviousCard : null,
+                  ),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _showMeaning = !_showMeaning),
+                      child: Column(
+                        children: [
+                          Text(
+                            displayText,
+                            style: TextStyle(fontSize: _fontSize),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  AppIconButton(
+                    icon: Icons.arrow_forward,
+                    onPressed: _currentIndex < _cards.length - 1 || _repeatEnabled
+                        ? _goToNextCard
+                        : null,
+                  ),
+                  AppIconButton(icon: Icons.last_page, onPressed: _goToLastCard),
+                ],
+              ),
+              const SizedBox(height: 40),
+              Text(
+                "카드 ${_currentIndex + 1} / ${_cards.length}",
+                style: const TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+      ],
+    ),
+    bottomNavigationBar: Padding(
+      padding: const EdgeInsets.only(bottom: 0, top: 10.0),
+      child: TTSControls(
+        onToggleTTS: _toggleTTS,
+        onChangeReadingMode: _changeReadingMode,
+        onChangeSpeed: _changeSpeed,
+        currentTtsSpeed: _ttsSpeed,
+        onChangeRepeat: _changeRepeat,
+        onToggleShuffle: _toggleShuffle,
+        onChangeTimer: _setTimer,
+        onCardSliderChanged: _onCardSliderChanged,
+        onChangeFrontLanguage: _changeFrontLanguage,
+        onChangeBackLanguage: _changeBackLanguage,
+        onFontSizeChanged: _changeFontSize,
+        currentCardIndex: _currentIndex,
+        totalCards: _cards.length,
+        isPlaying: _isPlaying,
+        isPaused: _isPaused,
+        frontLanguage: _frontLanguage,
+        backLanguage: _backLanguage,
+        remainingTime: _remainingTime,
+      ),
+    ),
+  ),
+);
+}
+
+
+  void _startTTS() async {
+    if (_cards.isEmpty) return;
+
+    setState(() {
+      _isPlaying = true;
+      _isPaused = false;
+      _remainingTime =
+      _timerMinutes > 0 ? Duration(minutes: _timerMinutes) : null;
+    });
+
+    if (_remainingTime != null) _startCountdown();
+
+    int index = _currentIndex;
+    while (_isPlaying) {
+      if (_isPaused) {
+        await Future.delayed(const Duration(milliseconds: 200));
+        continue;
+      }
+
+      if (_remainingTime != null && _remainingTime!.inSeconds <= 0) break;
+
+      await _playCard(index);
+      index = (index + 1) % _cards.length;
+    }
+
+    await _flutterTts.stop();
+    _stopCountdown();
+
+    setState(() {
+      _isPlaying = false;
+      _isPaused = false;
+      _remainingTime = null;
+    });
+  }
+
+  void _pauseTTS() {
+    if (!_isPlaying) return;
+    setState(() {
+      _isPaused = true;
+      _isPlaying = false;
+    });
+    _flutterTts.stop();
+  }
+
+  void _resumeTTS() {
+    if (!_isPaused) return;
+    setState(() {
+      _isPaused = false;
+      _isPlaying = true;
+    });
+    _startTTS();
   }
 
   Future<void> saveTTSSettingsLocally() async {
@@ -219,7 +423,8 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
 
   Future<void> _playCard(int index) async {
     if (!mounted) return;
-    setState(() => _currentIndex = index);
+    if (index < 0 || index >= _cards.length) return;
+    if (mounted) setState(() => _currentIndex = index);
 
     for (int i = 0; i < _repeatCount; i++) {
       if (!_isPlaying || _isPaused) break;
@@ -230,28 +435,34 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
 
         if (_readingMode == "앞뒤") {
           await _flutterTts.setLanguage(_frontLanguage);
+          if (!mounted) return;
           setState(() => _showMeaning = false);
           await _flutterTts.speak(frontText);
           await Future.delayed(const Duration(milliseconds: 500));
 
           await _flutterTts.setLanguage(_backLanguage);
+          if (!mounted) return;
           setState(() => _showMeaning = true);
           await _flutterTts.speak(backText);
         } else if (_readingMode == "뒤앞") {
           await _flutterTts.setLanguage(_backLanguage);
+          if (!mounted) return;
           setState(() => _showMeaning = true);
           await _flutterTts.speak(backText);
           await Future.delayed(const Duration(milliseconds: 500));
 
           await _flutterTts.setLanguage(_frontLanguage);
+          if (!mounted) return;
           setState(() => _showMeaning = false);
           await _flutterTts.speak(frontText);
         } else if (_readingMode == "앞면만") {
           await _flutterTts.setLanguage(_frontLanguage);
+          if (!mounted) return;
           setState(() => _showMeaning = false);
           await _flutterTts.speak(frontText);
         } else if (_readingMode == "뒷면만") {
           await _flutterTts.setLanguage(_backLanguage);
+          if (!mounted) return;
           setState(() => _showMeaning = true);
           await _flutterTts.speak(backText);
         }
@@ -260,166 +471,38 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       }
 
       await Future.delayed(const Duration(milliseconds: 500));
-      if (_lastPointedIndex != index) {
-        await PointService.addPoint(
-          amount: 1,
-          type: 'flashcard_play',
-          description: '플래시카드 재생 1회',
+    }
+    _playCount ++;
+
+    if (_currentIndex == _cards.length - 1) {
+      await _givePoints();
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text("학습 완료!"),
+            content: const Text("모든 카드를 학습했어요."),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text("확인"),
+              ),
+            ],
+          ),
         );
-        _lastPointedIndex = index;
       }
-    }
-  }
-
-  void _startTTS() async {
-    if (_cards.isEmpty) return;
-
-    setState(() {
-      _isPlaying = true;
-      _isPaused = false;
-      _remainingTime = _timerMinutes > 0 ? Duration(minutes: _timerMinutes) : null;
-    });
-
-    if (_remainingTime != null) _startCountdown();
-
-    int index = _currentIndex;
-    while (_isPlaying) {
-      if (_isPaused) {
-        await Future.delayed(const Duration(milliseconds: 200));
-        continue;
-      }
-
-      if (_remainingTime != null && _remainingTime!.inSeconds <= 0) break;
-
-      await _playCard(index);
-      index = (index + 1) % _cards.length;
-
+      return;
     }
 
-    await _flutterTts.stop();
-    _stopCountdown();
-
-    setState(() {
-      _isPlaying = false;
-      _isPaused = false;
-      _remainingTime = null;
-    });
   }
 
-  void _pauseTTS() {
-    if (!_isPlaying) return;
-    setState(() {
-      _isPaused = true;
-      _isPlaying = false;
-    });
-    _flutterTts.stop();
-  }
-
-  void _resumeTTS() {
-    if (!_isPaused) return;
-    setState(() {
-      _isPaused = false;
-      _isPlaying = true;
-    });
-    _startTTS();
-  }
-
-  @override
-  void dispose() {
-    _flutterTts.stop();
-    _stopCountdown();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_cards.isEmpty) {
-      return Scaffold(
-        appBar: AppBar(title: const Text("플래시카드 학습")),
-        body: const Center(child: Text("학습할 카드가 없습니다.")),
-      );
-    }
-
-    final currentCard = _cards[_currentIndex];
-    final displayText = _showMeaning
-        ? currentCard["meaning"] ?? ""
-        : currentCard["text"] ?? "";
-
-    return Scaffold(
-      appBar: AppBar(title: const Text("플래시카드 학습")),
-      body: Column(
-        children: [
-          Expanded(
-            child: Column(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-    Row(
-    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-    children: [
-    AppIconButton(icon: Icons.first_page, onPressed: _goToFirstCard),
-    AppIconButton(
-    icon: Icons.arrow_back,
-    onPressed: _currentIndex > 0 || _repeatEnabled ? _goToPreviousCard : null,
-    ),
-    Expanded(
-    child: GestureDetector(
-    onTap: () => setState(() => _showMeaning = !_showMeaning),
-    child: Column(
-    children: [
-    Text(
-    displayText,
-    style: TextStyle(fontSize: _fontSize),
-    textAlign: TextAlign.center,
-    ),
-    ],
-    ),
-    ),
-    ),
-    AppIconButton(
-    icon: Icons.arrow_forward,
-    onPressed: _currentIndex < _cards.length - 1 || _repeatEnabled
-    ? _goToNextCard
-        : null,
-    ),
-    AppIconButton(icon: Icons.last_page, onPressed: _goToLastCard),
-    ],
-    ),
-    const SizedBox(height: 40),
-    Text(
-    "카드 ${_currentIndex + 1} / ${_cards.length}",
-    style: const TextStyle(fontSize: 16),
-    ),
-    const SizedBox(height: 20),
-    ],
-    ),
-    ),
-    ],
-    ),
-    bottomNavigationBar: Padding(
-    padding: const EdgeInsets.only(bottom: 0,  // ← 기존보다 좀 더 내려줌
-      top: 10.0,  ),
-    child: TTSControls(
-    onToggleTTS: _toggleTTS,
-    onChangeReadingMode: _changeReadingMode,
-    onChangeSpeed: _changeSpeed,
-    currentTtsSpeed: _ttsSpeed,
-      onChangeRepeat: _changeRepeat,
-    onToggleShuffle: _toggleShuffle,
-    onChangeTimer: _setTimer,
-    onCardSliderChanged: _onCardSliderChanged,
-    onChangeFrontLanguage: _changeFrontLanguage,
-    onChangeBackLanguage: _changeBackLanguage,
-    onFontSizeChanged: _changeFontSize,
-    currentCardIndex: _currentIndex,
-    totalCards: _cards.length,
-    isPlaying: _isPlaying,
-    isPaused: _isPaused,
-    frontLanguage: _frontLanguage,
-    backLanguage: _backLanguage,
-    remainingTime: _remainingTime,
-
-    ),
-    ),
+  Future<void> _givePoints() async {
+    if (_playCount == 0) return;
+    await PointService.addPoint(
+      type: '플래시카드 학습',
+      amount: _playCount,
+      description: '플래시카드 $_playCount장 학습',
     );
-      }
-    }
+    _playCount = 0;
+  }
+}
