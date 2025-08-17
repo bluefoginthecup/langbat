@@ -1,56 +1,55 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:langarden_common/providers/garden_provider.dart';
 
-class ShopScreen extends StatefulWidget {
+class ShopScreen extends ConsumerWidget {
   const ShopScreen({super.key});
 
-  @override
-  State<ShopScreen> createState() => _ShopScreenState();
-}
-
-class _ShopScreenState extends State<ShopScreen> {
-  int points = 300;
-
-  // 인벤토리 (아이템 수량)
-  Map<String, int> inventory = {
-    'flower_pot': 0,
-    'tree': 0,
-    'bench': 0,
-  };
-
-  // 아이템 가격
-  final Map<String, int> itemPrices = {
+  final Map<String, int> itemPrices = const {
     'flower_pot': 50,
     'tree': 100,
     'bench': 80,
   };
 
-  final Map<String, IconData> itemIcons = {
+  final Map<String, IconData> itemIcons = const {
     'flower_pot': Icons.local_florist,
     'tree': Icons.park,
     'bench': Icons.event_seat,
   };
 
-  void buyItem(String item) {
-    int price = itemPrices[item]!;
-    if (points >= price) {
-      setState(() {
-        points -= price;
-        inventory[item] = (inventory[item] ?? 0) + 1;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('$item 구매 완료!'),
-        duration: const Duration(seconds: 1),
-      ));
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Text('포인트가 부족합니다.'),
-        duration: const Duration(seconds: 1),
-      ));
-    }
-  }
-
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isLoaded = ref.watch(gardenLoadedProvider);
+    if (!isLoaded) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final points = ref.watch(pointsProvider);
+    print('[DEBUG] ShopScreen의 현재 포인트: $points');
+    final pointsNotifier = ref.read(pointsProvider.notifier);
+    final inventoryNotifier = ref.read(inventoryProvider.notifier);
+    final inventory = ref.watch(inventoryProvider);
+
+    void buyItem(String item) {
+      final price = itemPrices[item]!;
+      if (points >= price) {
+        pointsNotifier.state -= price;
+        inventoryNotifier.addItem(item);
+
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('$item 구매 완료!'),
+          duration: const Duration(seconds: 1),
+        ));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('포인트가 부족합니다.'),
+          duration: const Duration(seconds: 1),
+        ));
+      }
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('상점')),
       body: Column(
@@ -65,7 +64,7 @@ class _ShopScreenState extends State<ShopScreen> {
                 return ListTile(
                   leading: Icon(itemIcons[item]),
                   title: Text(item),
-                  subtitle: Text('가격: ${itemPrices[item]}포인트'),
+                  subtitle: Text('가격: ${itemPrices[item]}포인트 | 보유: ${inventory[item] ?? 0}개'),
                   trailing: ElevatedButton(
                     onPressed: () => buyItem(item),
                     child: const Text('구매'),

@@ -52,6 +52,9 @@ class CharacterCheckScreen extends StatelessWidget {
         }
 
         if (snapshot.hasError || !snapshot.hasData) {
+
+          debugPrint("🔥 오류발생: ${snapshot.error}");
+          debugPrint("Stack trace: ${snapshot.stackTrace}");
           return const Scaffold(
             body: Center(child: Text('오류 발생')),
           );
