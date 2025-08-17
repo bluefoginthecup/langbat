@@ -9,6 +9,7 @@ import '../study/flashcard/flashcard_set_edit_screen.dart';
 import 'package:langarden_common/utils/trash_manager.dart';
 import '../study/flashcard/flashcard_study_screen.dart';
 import 'package:langarden_common/widgets/icon_button.dart'; // ✅ 툴팁 적용된 아이콘 버튼 불러오기
+import 'package:firebase_auth/firebase_auth.dart';
 
 class FlashcardSetListScreen extends ConsumerStatefulWidget {
   const FlashcardSetListScreen({super.key});
@@ -28,24 +29,50 @@ class _FlashcardSetListScreenState extends ConsumerState<FlashcardSetListScreen>
     final itemsSnapshot = await setDocRef.collection('items').get();
     print("DEBUG => itemsSnapshot.docs.length: ${itemsSnapshot.docs.length}");
 
+    // 기존
     for (var doc in itemsSnapshot.docs) {
       final data = doc.data();
       final content = data["content"] ?? {};
 
-      print("DEBUG => raw Firestore data: $data");
-      if (!data.containsKey("content")) {
-        print("⚠️ content 키가 없음! 데이터를 확인하세요.");
-        continue;
-      }
-      print("DEBUG => extracted content: $content");
+// 단일 이미지 URL(우선순위: content.imageUrl → 과거 front/back → 상위 레벨)
+      final imageUrl = (content["imageUrl"]
+          ?? content["imageFrontUrl"]
+          ?? content["imageBackUrl"]
+          ?? data["imageUrl"]
+          ?? "") as String;
 
-      // 저장된 데이터 구조가 이미 일관되게 order 값을 부여하고 있다면 그대로 사용
+      flashcards.add({
+        "text": content["text"] ?? "[텍스트 없음]",        // 앞면(스페인어)
+        "meaning": content["meaning"] ?? "[뜻 없음]",      // 뒷면(한국어)
+        "order": content["order"] ?? data["order"] ?? 9999,
+        "imageUrl": imageUrl,                              // ✅ 단일 이미지
+      });
+
+
+    }
+
+// 교체본
+    for (var doc in itemsSnapshot.docs) {
+      final data = doc.data();
+      final content = data["content"] ?? {};
+
+      // 이미지 폴백 체인
+      final imageFront =
+      (content["imageFrontUrl"] ?? content["imageUrl"] ?? data["imageUrl"] ?? "") as String;
+      final imageBack =
+      (content["imageBackUrl"]  ?? content["imageUrl"] ?? data["imageUrl"] ?? "") as String;
+
       flashcards.add({
         "text": content["text"] ?? "[텍스트 없음]",
         "meaning": content["meaning"] ?? "[뜻 없음]",
         "order": content["order"] ?? data["order"] ?? 9999,
+        "imageFrontUrl": imageFront,
+        "imageBackUrl": imageBack,
+        // 과거 세트 호환용: content.imageUrl만 있었던 경우를 대비해 평탄화 필드도 유지(선택)
+        "imageUrl": content["imageUrl"] ?? data["imageUrl"] ?? "",
       });
     }
+
 
     // flashcards 리스트를 order 필드 기준 오름차순 정렬
     flashcards.sort((a, b) => (a["order"] as int).compareTo(b["order"] as int));
@@ -118,6 +145,7 @@ class _FlashcardSetListScreenState extends ConsumerState<FlashcardSetListScreen>
       final controller = ref.watch(multiSelectControllerProvider.notifier);
       final selectedIds = ref.watch(multiSelectControllerProvider);
       final isSelectionMode = controller.selectionMode;
+      final uid = FirebaseAuth.instance.currentUser?.uid;
 
       return Scaffold(
         appBar: AppBar(
@@ -134,13 +162,18 @@ class _FlashcardSetListScreenState extends ConsumerState<FlashcardSetListScreen>
             ),
           ],
         ),
+
         body: StreamBuilder<QuerySnapshot>(
+
           stream: FirebaseFirestore.instance
               .collection('flashcard_sets')
+              .where('uid', isEqualTo: uid)
               .orderBy('createdAt', descending: true)
               .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.hasError) {
+              debugPrint("🔥 flashcard_sets stream error: ${snapshot.error}");
+              debugPrint("Stack: ${snapshot.stackTrace}");
               return Center(child: Text("오류: ${snapshot.error}"));
             }
             if (snapshot.connectionState == ConnectionState.waiting) {

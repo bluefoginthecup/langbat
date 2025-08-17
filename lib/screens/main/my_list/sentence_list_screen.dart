@@ -309,12 +309,8 @@ class _SentenceListScreenState extends State<SentenceListScreen> {
           ),
         ),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('취소')),
-          ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('만들기')),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('취소')),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('만들기')),
         ],
       ),
     );
@@ -323,45 +319,62 @@ class _SentenceListScreenState extends State<SentenceListScreen> {
     try {
       await _ensureSignedIn();
       final uid = _uid!;
+      final fs = FirebaseFirestore.instance;
 
-      final setRef =
-      FirebaseFirestore.instance.collection('flashcard_sets').doc();
-      final batch = FirebaseFirestore.instance.batch();
+      // 1) 세트 문서 먼저 생성(규칙에서 참조 가능하도록)
+      final setRef = fs.collection('flashcard_sets').doc();
+      final title = titleCtl.text.trim().isEmpty ? '새 세트' : titleCtl.text.trim();
 
-      final title =
-      titleCtl.text.trim().isEmpty ? '새 세트' : titleCtl.text.trim();
-      batch.set(setRef, {
-        'uid': uid, // 세트 소유자 기록
-        'name': title,
+      debugPrint('[CreateSet] writing set ${setRef.id}');
+      await setRef.set({
+        'uid'      : uid,
+        'name'    : title,
         'createdAt': FieldValue.serverTimestamp(),
-        'size': _selectedIds.length,
+        'size'     : _selectedIds.length,
       });
 
+      // 2) items는 별도 배치로 생성
+      WriteBatch batch = fs.batch();
       int order = 0;
+      int ops = 0;
+
       for (final doc in _lastDocs) {
         if (!_selectedIds.contains(doc.id)) continue;
+
         final d = doc.data() as Map<String, dynamic>;
         final sentence = (d['sentence'] ?? '') as String;
-        final meaning = (d['meaning'] ?? '') as String;
+        final meaning  = (d['meaning']  ?? '') as String;
         final imageUrl = (d['imageUrl'] ?? '') as String;
 
         final itemRef = setRef.collection('items').doc();
         batch.set(itemRef, {
           'addedAt': FieldValue.serverTimestamp(),
-          'order': order, // 안전용 top-level
+          'order'  : order, // top-level도 보관(호환용)
           'content': {
-            'text': sentence,
+            'text'   : sentence,
             'meaning': meaning,
-            'order': order,
-            'type': 'custom',
-            if (imageUrl.isNotEmpty) 'imageUrl': imageUrl,
+            'order'  : order,
+            'type'   : 'custom',
+            if (imageUrl.isNotEmpty) 'imageFrontUrl': imageUrl, // 앞면 이미지
+            // 뒷면 이미지는 추후 편집 시 'imageBackUrl'로 추가 가능
           },
           'sourceSentenceId': doc.id,
         });
-        order++;
+        order++; ops++;
+
+        // 배치 한도 보호(여유있게 쪼갬)
+        if (ops == 450) {
+          debugPrint('[CreateSet] committing partial batch...');
+          await batch.commit();
+          batch = fs.batch();
+          ops = 0;
+        }
       }
 
-      await batch.commit();
+      if (ops > 0) {
+        debugPrint('[CreateSet] committing final batch...');
+        await batch.commit();
+      }
 
       if (!mounted) return;
       setState(_selectedIds.clear);
@@ -369,13 +382,21 @@ class _SentenceListScreenState extends State<SentenceListScreen> {
         const SnackBar(content: Text('플래시카드 세트가 생성되었습니다.')),
       );
 
-      // TODO: 필요 시 생성 직후 학습화면으로 이동
-    } catch (e) {
+      // TODO: 필요하면 여기서 학습화면으로 이동
+      // Navigator.push(context, MaterialPageRoute(builder: (_) => FlashcardStudyScreen(setId: setRef.id)));
+    } on FirebaseException catch (e, st) {
+      debugPrint('🔥 set/items 생성 실패: ${e.code} ${e.message}\n$st');
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('세트 생성 실패: $e')),
+        SnackBar(content: Text('세트 생성 실패: ${e.code}')),
+      );
+    } catch (e, st) {
+      debugPrint('🔥 set/items 생성 실패(기타): $e\n$st');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('세트 생성 실패(알 수 없는 오류)')),
       );
     }
   }
+
 }
 
 // 파일 바깥(하단)에 둡니다.
