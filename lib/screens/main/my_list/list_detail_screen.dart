@@ -6,12 +6,14 @@ import 'package:langbat/models/node_model.dart'; // Node, NodeType 공통 파일
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:cross_file/cross_file.dart'; // XFile을 사용하기 위한 import
-
 import 'package:langbat/services/template_service.dart'; // template_service.dart 에 nodeToJson, generateTemplateJson 함수 정의
+import 'package:firebase_auth/firebase_auth.dart';
+
 
 class ListDetailScreen extends StatefulWidget {
   final Node node; // 초기 데이터(참고용)
   final String docId; // 최상위 리스트 문서 ID
+
 
   const ListDetailScreen({super.key, required this.node, required this.docId});
 
@@ -28,14 +30,22 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
     _futureNode = _fetchNodeWithChildren(widget.docId);
   }
 
-  // Firestore에서 최상위 문서와 하위 children 서브컬렉션을 재귀적으로 로드
   Future<Node> _fetchNodeWithChildren(String docId) async {
-    DocumentReference docRef =
-    FirebaseFirestore.instance.collection('lists').doc(docId);
-    DocumentSnapshot docSnap = await docRef.get();
-    Map<String, dynamic> data = docSnap.data() as Map<String, dynamic>;
+    final uid = FirebaseAuth.instance.currentUser!.uid;
 
-    Node fetchedNode = Node(
+    // 상위 문서 ref
+    final docRef = FirebaseFirestore.instance
+        .collection('users').doc(uid).collection('lists').doc(docId);
+
+    // 상위 문서 스냅샷 읽기
+    final docSnap = await docRef.get();
+    if (!docSnap.exists) {
+      throw Exception('문서를 찾을 수 없습니다: $docId');
+    }
+    final data = docSnap.data() as Map<String, dynamic>;
+
+    // 상위 Node 구성
+    final fetchedNode = Node(
       name: data['name'] ?? '',
       type: data['type'] == 'data' ? NodeType.data : NodeType.category,
       data: (data['data'] as Map?)?.cast<String, String>() ?? {},
@@ -43,16 +53,20 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
       docId: docSnap.id,
     );
 
-    QuerySnapshot childrenSnap = await docRef
+    // 자식 문서들 읽기 (정렬 키: sortIndex)
+    final childrenSnap = await docRef
         .collection('children')
-        .orderBy('order')
+        .orderBy('sortIndex')
         .get();
-    for (var childDoc in childrenSnap.docs) {
-      Node childNode = await _fetchChildNode(childDoc.reference);
+
+    for (final childDoc in childrenSnap.docs) {
+      final childNode = await _fetchChildNode(childDoc.reference);
       fetchedNode.children.add(childNode);
     }
+
     return fetchedNode;
   }
+
 
   Future<Node> _fetchChildNode(DocumentReference docRef) async {
     DocumentSnapshot docSnap = await docRef.get();
@@ -65,10 +79,12 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
       docId: docSnap.id,
     );
 
-    QuerySnapshot childrenSnap = await docRef
+    final childrenSnap = await docRef
         .collection('children')
-        .orderBy('order')
+        .orderBy('sortIndex') // ← 통일
         .get();
+
+
     for (var childDoc in childrenSnap.docs) {
       Node childNode = await _fetchChildNode(childDoc.reference);
       node.children.add(childNode);
@@ -79,8 +95,10 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
   // AppBar의 글로벌 저장 아이콘을 누르면 전체 변경사항을 Firestore에 업데이트
   Future<void> _globalSave() async {
     try {
-      DocumentReference topRef =
-      FirebaseFirestore.instance.collection('lists').doc(widget.docId);
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final topRef = FirebaseFirestore.instance
+          .collection('users').doc(uid).collection('lists').doc(widget.docId);
+
       Node currentNode = await _futureNode;
       await _saveAllChanges(currentNode, topRef);
       ScaffoldMessenger.of(context)
@@ -90,29 +108,48 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
           .showSnackBar(SnackBar(content: Text("저장 실패: $e")));
     }
   }
-
   Future<void> _saveAllChanges(Node node, DocumentReference docRef) async {
     await docRef.set({
       "name": node.name,
       "type": node.type == NodeType.data ? "data" : "category",
       "data": node.data,
+      "updatedAt": FieldValue.serverTimestamp(), // 갱신시각
+      // ownerUid는 기존 문서에 이미 있으므로 merge:true로 덮어쓰지 않음
     }, SetOptions(merge: true));
 
-    for (var child in node.children) {
+    // 자식은 현재 리스트 순서를 그대로 sortIndex로 저장
+    for (int i = 0; i < node.children.length; i++) {
+      final child = node.children[i];
+
       if (child.docId == null) {
         final newChildDoc = await docRef.collection('children').add({
           "name": child.name,
           "type": child.type == NodeType.data ? "data" : "category",
           "data": child.data,
+          "sortIndex": i, // 정렬키 통일
+          "timestamp": FieldValue.serverTimestamp(),
+          // 규칙이 엄격하면 ownerUid 추가:
+          // "ownerUid": (await docRef.get()).get("ownerUid"),
         });
         child.docId = newChildDoc.id;
       } else {
-        DocumentReference childRef =
-        docRef.collection('children').doc(child.docId);
-        await _saveAllChanges(child, childRef);
+        final childRef = docRef.collection('children').doc(child.docId);
+        await childRef.set({
+          "name": child.name,
+          "type": child.type == NodeType.data ? "data" : "category",
+          "data": child.data,
+          "sortIndex": i,
+          "updatedAt": FieldValue.serverTimestamp(),
+          // "ownerUid": (await docRef.get()).get("ownerUid"), // 필요 시 유지
+        }, SetOptions(merge: true));
+        // 하위 자식 재귀 저장
+        if (child.children.isNotEmpty) {
+          await _saveAllChanges(child, childRef);
+        }
       }
     }
   }
+
 
   /// 템플릿 다운로드 함수 (template_service.dart의 generateTemplateJson 사용)
   Future<void> _downloadTemplate(BuildContext context) async {
@@ -323,14 +360,22 @@ class _NodeDetailWidgetState extends State<NodeDetailWidget> {
                             : {},
                       );
 
+                      final uid = FirebaseAuth.instance.currentUser!.uid;
                       final parentRef = FirebaseFirestore.instance
-                          .collection('lists')
+                          .collection('users').doc(uid).collection('lists')
                           .doc(parent.docId);
+
+// 새로 추가되는 자식은 "맨 뒤"에 붙이니 sortIndex = 현재 길이
                       final childDoc = await parentRef.collection('children').add({
                         "name": newNode.name,
                         "type": newNode.type == NodeType.data ? "data" : "category",
                         "data": newNode.data,
+                        "sortIndex": parent.children.length,
+                        "timestamp": FieldValue.serverTimestamp(),
+                        // 규칙이 엄격하면 ownerUid도:
+                        // "ownerUid": uid,
                       });
+
 
                       newNode.docId = childDoc.id;
 

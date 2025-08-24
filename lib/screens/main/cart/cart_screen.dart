@@ -4,6 +4,7 @@ import '../study/flashcard/flashcard_set_edit_screen.dart';
 import '/models/node_model.dart'; // Node 및 NodeType을 가져옵니다.
 import '/services/flatten_util.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '/services/firebase_refs.dart'; // 경로 주의
 
 
 
@@ -138,10 +139,10 @@ class CartScreen extends StatelessWidget {
 
   /// lists 컬렉션에서 특정 문서를 cart에 추가 (참조만)
   Future<void> addListToCart(String listDocId) async {
-    await FirebaseFirestore.instance.collection('cart').add({
+    await FirestoreRefs.carts().add({ // CHANGED
       "type": "custom",
       "originalId": listDocId,
-      "addedAt": FieldValue.serverTimestamp(),
+      FirestoreRefs.createdAt: FieldValue.serverTimestamp(), // CHANGED
     });
   }
 
@@ -153,7 +154,7 @@ class CartScreen extends StatelessWidget {
     if (type == "custom") {
       final originalId = data["originalId"];
       return FutureBuilder<DocumentSnapshot>(
-        future: FirebaseFirestore.instance.collection('lists').doc(originalId).get(),
+        future: FirestoreRefs.lists().doc(originalId).get(), // CHANGED
         builder: (ctx, snap) {
           String title;
           if (snap.connectionState == ConnectionState.waiting) {
@@ -189,6 +190,14 @@ class CartScreen extends StatelessWidget {
 
 
   Widget build(BuildContext context) {
+    // 로그인 체크는 화면 진입 시 1회만
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      return const Scaffold(
+        body: Center(child: Text('로그인이 필요합니다.')),
+      );
+    }
+
     return GestureDetector(
       // 화면 탭 시 키보드 해제
       onTap: () => FocusScope.of(context).unfocus(),
@@ -225,7 +234,10 @@ class CartScreen extends StatelessWidget {
           ],
         ),
         body: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance.collection('cart').snapshots(),
+          stream: FirestoreRefs
+              .carts() // CHANGED
+              .orderBy(FirestoreRefs.createdAt, descending: true) // CHANGED (정렬 필드가 있으면)
+              .snapshots(),
           builder: (context, snapshot) {
             if (snapshot.hasError) {
               return Center(child: Text("오류: ${snapshot.error}"));
@@ -250,7 +262,7 @@ class CartScreen extends StatelessWidget {
 
   /// 개별 아이템 삭제 함수
   void _removeFromCart(String docId) async {
-    await FirebaseFirestore.instance.collection('cart').doc(docId).delete();
+    await FirestoreRefs.carts().doc(docId).delete(); // CHANGED
   }
 
   /// 장바구니 비우기 함수
@@ -268,10 +280,11 @@ class CartScreen extends StatelessWidget {
     // 새로운 flashcard 세트를 위한 문서 생성
 
     final uid = FirebaseAuth.instance.currentUser!.uid;
-        final newSetRef = FirebaseFirestore.instance
-             .collection('users').doc(uid)
-             .collection('flashcard_sets').doc();
-    final cartItemsSnapshot = await FirebaseFirestore.instance.collection('cart').get();
+    final newSetRef = FirebaseFirestore.instance
+        .collection('users').doc(uid)
+        .collection('flashcard_sets').doc();
+
+    final cartItemsSnapshot = await FirestoreRefs.carts().get(); // CHANGED
     WriteBatch batch = FirebaseFirestore.instance.batch();
 
     // 각 cart item마다 처리
@@ -287,33 +300,32 @@ class CartScreen extends StatelessWidget {
         // 기존 동사 리스트 처리
         subcards = buildSubcardsFromVerb(docData["data"]);
       } else if (type == "custom") {
-    final listDocId = docData["originalId"];
-    if (listDocId == null) {
-    print("ERROR: custom 문서인데 originalId가 없음");
-    continue;
-    }
-    final listDocSnap = await FirebaseFirestore.instance
-        .collection('lists')
-        .doc(listDocId)
-        .get();
-    if (!listDocSnap.exists) {
-    print("ERROR: lists/$listDocId 문서가 존재하지 않음");
-    continue;
-    }
-    // 원본 lists 문서를 Node로 변환
-    final customNode = await buildNodeFromDocument(listDocSnap);
-    // flattenTree() 함수를 이용해 전체 노드를 평탄화하고 전역 순서를 재할당
-    List<Node> flatNodes = flattenTree(customNode);
-    // 평탄화된 Node 리스트를 flashcard용 Map 리스트로 변환
-    subcards = flatNodes.map((node) => {
-    "text": node.name,
-    "meaning": node.data["뜻"] ?? "",
-    "order": node.order,
-    }).toList();
-    }
+        final listDocId = docData["originalId"];
+        if (listDocId == null) {
+          print("ERROR: custom 문서인데 originalId가 없음");
+          continue;
+        }
+        final listDocSnap = await FirestoreRefs // CHANGED
+            .lists()
+            .doc(listDocId)
+            .get();
+        if (!listDocSnap.exists) {
+          print("ERROR: lists/$listDocId 문서가 존재하지 않음");
+          continue;
+        }
+        // 원본 lists 문서를 Node로 변환
+        final customNode = await buildNodeFromDocument(listDocSnap);
+        // flattenTree() 함수를 이용해 전체 노드를 평탄화하고 전역 순서를 재할당
+        List<Node> flatNodes = flattenTree(customNode);
+        // 평탄화된 Node 리스트를 flashcard용 Map 리스트로 변환
+        subcards = flatNodes.map((node) => {
+          "text": node.name,
+          "meaning": node.data["뜻"] ?? "",
+          "order": node.order,
+        }).toList();
+      }
 
-
-    // subcards 정렬
+      // subcards 정렬
       subcards.sort((a, b) => (a["order"] as int).compareTo(b["order"] as int));
 
       // 각 subcard를 flashcard 세트 items 하위 컬렉션에 저장
@@ -323,17 +335,17 @@ class CartScreen extends StatelessWidget {
           "content": subcard,
           "type": docData["type"],
           "order": subcard["order"],
-          "addedAt": FieldValue.serverTimestamp(),
+          "createdAt": FieldValue.serverTimestamp(),
         });
       }
     }
 
 
     // 세트 메타데이터 저장 (uid 필드 불필요)
-         batch.set(newSetRef, {
-           "name": "새 플래시카드 세트",
-           "createdAt": FieldValue.serverTimestamp(),
-         });
+    batch.set(newSetRef, {
+      "name": "새 플래시카드 세트",
+      "createdAt": FieldValue.serverTimestamp(),
+    });
 
     await batch.commit();
 
@@ -352,10 +364,23 @@ class CartScreen extends StatelessWidget {
       final docData = doc.data();
       final type = docData["type"] ?? "unknown";
       if (type == "custom") {
+        // cart 문서가 아니라 원본 lists 문서를 읽도록 수정
+        final originalId = docData["originalId"]; // CHANGED
+        if (originalId == null) continue;        // CHANGED
+        final listSnap = await FirestoreRefs      // CHANGED
+            .lists()
+            .doc(originalId)
+            .get();
+        if (!listSnap.exists) continue;          // CHANGED
+
         // custom 리스트에 대해 Node 트리 구성
-        final customNode = await buildNodeFromDocument(doc);
-        // 저장할 컬렉션 예시: "custom_lists" 컬렉션에 저장 (doc.id를 키로 사용)
-        final customListRef = FirebaseFirestore.instance.collection('custom_lists').doc(doc.id);
+        final customNode = await buildNodeFromDocument(listSnap); // CHANGED
+
+        // 저장할 컬렉션: users/{uid}/custom_lists 로 저장 (보안규칙 일관성)
+        final customListRef = FirestoreRefs
+            .customLists()
+            .doc(doc.id); // 키는 카트 문서 id 재사용 (원문 유지)
+
         // 루트 노드 저장
         await customListRef.set({
           "data": {

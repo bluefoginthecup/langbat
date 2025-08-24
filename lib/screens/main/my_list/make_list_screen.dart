@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:langbat/models/node_model.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class MakeListScreen extends StatefulWidget {
   const MakeListScreen({super.key});
@@ -117,20 +118,38 @@ class _MakeListScreenState extends State<MakeListScreen> {
   // Firestore에 저장하는 함수 (현재는 문서 ID를 자동 생성하는 방식)
   Future<void> _saveToFirebase() async {
     try {
+      // ① uid 확보
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('로그인이 필요합니다.')),
+        );
+        return;
+      }
+
+      // ② users/{uid}/lists 레퍼런스
+      final listsRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('lists');
+
       for (var listNode in lists) {
-        DocumentReference listDoc = await FirebaseFirestore.instance
-            .collection('lists')
-            .add({
+        // ③ 최상위 문서 쓰기 (ownerUid 추가)
+        DocumentReference listDoc = await listsRef.add({
           'name': listNode.name,
           'type': listNode.type == NodeType.category ? 'category' : 'data',
           'data': listNode.data,
-          'timestamp': FieldValue.serverTimestamp(),
+          'ownerUid': uid,                       // ★ 규칙에서 소유자 검사 시 필요
+          'timestamp': FieldValue.serverTimestamp(), // 네가 쓰던 필드 유지
         });
         listNode.docId = listDoc.id;
-        await _saveChildren(listNode.children, listDoc);
+
+        // ④ 자식 저장 (uid 전달)
+        await _saveChildren(listNode.children, listDoc, uid);
       }
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Firebase 저장 완료')),
+        const SnackBar(content: Text('Firebase 저장 완료')),
       );
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -141,21 +160,28 @@ class _MakeListScreenState extends State<MakeListScreen> {
 
   // 하위 노드들을 재귀적으로 저장
   Future<void> _saveChildren(
-      List<Node> children, DocumentReference parentDoc) async {
+      List<Node> children,
+      DocumentReference parentDoc,
+      String uid,                                // ← uid 인자 추가
+      ) async {
     for (int i = 0; i < children.length; i++) {
       final child = children[i];
-      // child.order는 무시하고 i(배열 인덱스)를 sortIndex로 사용
+
       DocumentReference childDoc = await parentDoc.collection('children').add({
         'name': child.name,
         'type': child.type == NodeType.category ? 'category' : 'data',
         'data': child.data,
-        'sortIndex': i,  // 이 값으로 Firestore에서 순서를 복원
+        'sortIndex': i,                         // 배열 인덱스로 정렬 복원
+        'ownerUid': uid,                        // ★ 규칙 대비
+        'timestamp': FieldValue.serverTimestamp(),
       });
+
       if (child.children.isNotEmpty) {
-        await _saveChildren(child.children, childDoc);
+        await _saveChildren(child.children, childDoc, uid); // 재귀에도 uid 전달
       }
     }
   }
+
 
   // 대량 업로드 함수: file_picker를 사용해 JSON 파일 선택 후 파싱하여 새로운 리스트 생성
   Future<void> _bulkUpload() async {
