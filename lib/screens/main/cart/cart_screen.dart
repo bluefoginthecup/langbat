@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../study/flashcard/flashcard_set_edit_screen.dart';
 import '/models/node_model.dart'; // Node 및 NodeType을 가져옵니다.
 import '/services/flatten_util.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 
 
@@ -265,7 +266,11 @@ class CartScreen extends StatelessWidget {
   /// 서브카드 생성 후 플래시카드 세트로 저장
   Future<void> _createFlashcardSetFromCart(BuildContext context) async {
     // 새로운 flashcard 세트를 위한 문서 생성
-    final newSetRef = FirebaseFirestore.instance.collection('flashcard_sets').doc();
+
+    final uid = FirebaseAuth.instance.currentUser!.uid;
+        final newSetRef = FirebaseFirestore.instance
+             .collection('users').doc(uid)
+             .collection('flashcard_sets').doc();
     final cartItemsSnapshot = await FirebaseFirestore.instance.collection('cart').get();
     WriteBatch batch = FirebaseFirestore.instance.batch();
 
@@ -323,11 +328,12 @@ class CartScreen extends StatelessWidget {
       }
     }
 
-    // 세트 메타데이터 저장
-    batch.set(newSetRef, {
-      "name": "새 플래시카드 세트",
-      "createdAt": FieldValue.serverTimestamp(),
-    });
+
+    // 세트 메타데이터 저장 (uid 필드 불필요)
+         batch.set(newSetRef, {
+           "name": "새 플래시카드 세트",
+           "createdAt": FieldValue.serverTimestamp(),
+         });
 
     await batch.commit();
 

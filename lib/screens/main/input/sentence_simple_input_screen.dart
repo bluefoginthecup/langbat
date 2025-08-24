@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class SentenceSimpleInputScreen extends StatefulWidget {
   const SentenceSimpleInputScreen({super.key});
@@ -26,7 +27,11 @@ class _SentenceSimpleInputScreenState extends State<SentenceSimpleInputScreen> {
     try {
       // Firestore 배치 쓰기를 사용하여 여러 문장을 한 번에 저장
       final batch = FirebaseFirestore.instance.batch();
-      final collectionRef = FirebaseFirestore.instance.collection('sentences');
+
+     final uid = FirebaseAuth.instance.currentUser!.uid;
+     final collectionRef = FirebaseFirestore.instance
+         .collection('users').doc(uid).collection('sentences');
+
       for (var sentence in sentences) {
         final docRef = collectionRef.doc(); // 자동 생성 ID 사용
         batch.set(docRef, {

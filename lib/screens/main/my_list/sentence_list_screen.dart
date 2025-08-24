@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+
 
 class SentenceListScreen extends StatefulWidget {
   const SentenceListScreen({super.key});
@@ -37,13 +39,14 @@ class _SentenceListScreenState extends State<SentenceListScreen> {
   }
 
   Stream<QuerySnapshot<Map<String, dynamic>>> _stream() {
-    // UID 기반으로 내 문장만 조회 (보안 규칙과 일치)
-    return FirebaseFirestore.instance
-        .collection('sentences')
-        .where('uid', isEqualTo: _uid)
-        .orderBy('createdAt', descending: true) // ← 인덱스 만들라는 안내가 뜰 수 있어요
-        .snapshots();
-  }
+        final uid = _uid!;
+        return FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .collection('sentences')
+            .orderBy('createdAt', descending: true)
+            .snapshots();
+      }
 
   bool get _selectionMode => _selectedIds.isNotEmpty;
 
@@ -191,30 +194,44 @@ class _SentenceListScreenState extends State<SentenceListScreen> {
           // 로그인 보장 및 uid 확보
           await _ensureSignedIn();
           final uid = _uid!;
-          final col = FirebaseFirestore.instance.collection('sentences');
+          final col = FirebaseFirestore.instance
+              .collection('users').doc(uid).collection('sentences');
           final docRef = col.doc();
 
           String imageUrl = '';
           try {
             if (picked != null) {
-              final data = await picked!.readAsBytes();
-              // 사용자 경로에 저장 → Storage 규칙과 매칭
+              final original = await picked!.readAsBytes();
+
+              // 🔽 긴 변 1600px로 리사이즈 + 품질 75 (jpeg)
+              final compressed = await FlutterImageCompress.compressWithList(
+                original,
+                quality: 75,
+                minWidth: 1600,
+                minHeight: 1066, // 1600 * (2/3) ≈ 1066 (대략 3:2 목표)
+                format: CompressFormat.jpeg,
+              );
+
               final path = 'users/$uid/sentences/${docRef.id}.jpg';
-              final task = await FirebaseStorage.instance
-                  .ref(path)
-                  .putData(data, SettableMetadata(contentType: 'image/jpeg'));
+              final task = await FirebaseStorage.instance.ref(path).putData(
+                compressed,
+                SettableMetadata(
+                  contentType: 'image/jpeg',
+                  // ✅ 7일 캐시(원하면 1년까지 가능)
+                  cacheControl: 'public, max-age=604800, immutable',
+                ),
+              );
               imageUrl = await task.ref.getDownloadURL();
             }
 
             await docRef.set({
-              'uid': uid, // 문서 소유자 기록(보안 규칙 대응)
               'sentence': sentence,
               'meaning': meaning,
               'imageUrl': imageUrl,
               'createdAt': FieldValue.serverTimestamp(),
             });
 
-            if (context.mounted) {
+          if (context.mounted) {
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('추가되었습니다.')),
@@ -321,19 +338,24 @@ class _SentenceListScreenState extends State<SentenceListScreen> {
       final uid = _uid!;
       final fs = FirebaseFirestore.instance;
 
-      // 1) 세트 문서 먼저 생성(규칙에서 참조 가능하도록)
-      final setRef = fs.collection('flashcard_sets').doc();
+      // ✅ 사용자 네임스페이스에 세트 생성
+      final setRef = fs
+          .collection('users')
+          .doc(uid)
+          .collection('flashcard_sets')
+          .doc();
+
       final title = titleCtl.text.trim().isEmpty ? '새 세트' : titleCtl.text.trim();
 
       debugPrint('[CreateSet] writing set ${setRef.id}');
       await setRef.set({
-        'uid'      : uid,
-        'name'    : title,
+        'uid': uid,
+        'name': title,
         'createdAt': FieldValue.serverTimestamp(),
-        'size'     : _selectedIds.length,
+        'size': _selectedIds.length,
       });
 
-      // 2) items는 별도 배치로 생성
+      // ✅ items도 같은 네임스페이스 하위에 저장
       WriteBatch batch = fs.batch();
       int order = 0;
       int ops = 0;
@@ -343,26 +365,25 @@ class _SentenceListScreenState extends State<SentenceListScreen> {
 
         final d = doc.data() as Map<String, dynamic>;
         final sentence = (d['sentence'] ?? '') as String;
-        final meaning  = (d['meaning']  ?? '') as String;
+        final meaning = (d['meaning'] ?? '') as String;
         final imageUrl = (d['imageUrl'] ?? '') as String;
 
         final itemRef = setRef.collection('items').doc();
         batch.set(itemRef, {
           'addedAt': FieldValue.serverTimestamp(),
-          'order'  : order, // top-level도 보관(호환용)
+          'order': order,
           'content': {
-            'text'   : sentence,
+            'text': sentence,
             'meaning': meaning,
-            'order'  : order,
-            'type'   : 'custom',
-            if (imageUrl.isNotEmpty) 'imageFrontUrl': imageUrl, // 앞면 이미지
-            // 뒷면 이미지는 추후 편집 시 'imageBackUrl'로 추가 가능
+            'order': order,
+            'type': 'custom',
+            if (imageUrl.isNotEmpty) 'imageFrontUrl': imageUrl,
           },
           'sourceSentenceId': doc.id,
         });
-        order++; ops++;
+        order++;
+        ops++;
 
-        // 배치 한도 보호(여유있게 쪼갬)
         if (ops == 450) {
           debugPrint('[CreateSet] committing partial batch...');
           await batch.commit();
@@ -381,9 +402,6 @@ class _SentenceListScreenState extends State<SentenceListScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('플래시카드 세트가 생성되었습니다.')),
       );
-
-      // TODO: 필요하면 여기서 학습화면으로 이동
-      // Navigator.push(context, MaterialPageRoute(builder: (_) => FlashcardStudyScreen(setId: setRef.id)));
     } on FirebaseException catch (e, st) {
       debugPrint('🔥 set/items 생성 실패: ${e.code} ${e.message}\n$st');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -396,6 +414,7 @@ class _SentenceListScreenState extends State<SentenceListScreen> {
       );
     }
   }
+
 
 }
 

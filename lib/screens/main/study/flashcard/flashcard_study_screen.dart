@@ -6,6 +6,8 @@ import 'package:langarden_common/widgets/tts_controls.dart';
 import 'package:langarden_common/widgets/icon_button.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:langbat/services/point_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+
 
 class FlashcardStudyScreen extends StatefulWidget {
   final List<Map<String, dynamic>> flashcards;
@@ -125,6 +127,13 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     final backText  = (currentCard["meaning"] ?? "") as String;    // 한국어
     final imageUrl  = (currentCard["imageUrl"] ?? "") as String;   // ✅ 단일 이미지
     final displayText = _showMeaning ? backText : frontText;       // 텍스트만 전환
+    final size = MediaQuery.of(context).size;
+    final isLandscape = size.width > size.height;
+    final isTablet = size.shortestSide >= 600;
+    final imgFlex  = (isTablet && isLandscape) ? 8 : 7;
+    final textFlex = (isTablet && isLandscape) ? 2 : 3;
+
+
 
     return WillPopScope(
       onWillPop: _onWillPop,
@@ -162,55 +171,51 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            // 이미지 영역 (7)
-                            Expanded(
-                              flex: 7,
-                              child: Center(
-                                child: imageUrl.isEmpty
-                                    ? const SizedBox.shrink()
-                                    : FittedBox(
-                                  fit: BoxFit.contain,
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: ConstrainedBox(
-                                      constraints: const BoxConstraints(
-                                        maxWidth: 900,
-                                        maxHeight: 500,
-                                      ),
-                                      child: Image.network(
-                                        imageUrl,
-                                        fit: BoxFit.contain,
-                                        errorBuilder: (_, __, ___) =>
-                                        const Icon(Icons.broken_image, size: 48),
-                                        loadingBuilder: (ctx, child, progress) =>
-                                        progress == null
-                                            ? child
-                                            : const Padding(
-                                          padding: EdgeInsets.all(16),
-                                          child: CircularProgressIndicator(),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
+                    Expanded(
+                    flex: imgFlex,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Center(
+                        child: imageUrl.isEmpty
+                            ? const SizedBox.shrink()
+                            : FractionallySizedBox(
+                          // 아이패드 가로에서 이미지 더 크게
+                          widthFactor: (isTablet && isLandscape) ? 0.72 : 0.9,
+                          child: AspectRatio(
+                            aspectRatio: 1.5, // width / height = 6 / 4
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(14),
+                              child: CachedNetworkImage(
+                                imageUrl: imageUrl,
+                                fit: BoxFit.cover, // 비율 유지하며 채우기(가벼운 중앙 크롭)
+                                placeholder: (ctx, _) =>
+                                const Center(child: CircularProgressIndicator()),
+                                errorWidget: (ctx, _, __) =>
+                                const Icon(Icons.broken_image, size: 48),
                               ),
                             ),
-                            const SizedBox(height: 12),
-                            // 텍스트 영역 (3)
-                            Expanded(
-                              flex: 3,
-                              child: Center(
-                                child: SingleChildScrollView(
-                                  physics: const BouncingScrollPhysics(),
-                                  child: Text(
-                                    displayText,
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(fontSize: _fontSize),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+
+// 텍스트 Expanded는 flex: textFlex 로
+                  Expanded(
+                    flex: textFlex,
+                    child: Center(
+                      child: SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(),
+                        child: Text(
+                          displayText,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: _fontSize),
+                        ),
+                      ),
+                    ),
+                  ),
+
+                ],
                         ),
                       ),
                     ),

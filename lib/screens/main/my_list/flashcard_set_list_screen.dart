@@ -11,6 +11,7 @@ import '../study/flashcard/flashcard_study_screen.dart';
 import 'package:langarden_common/widgets/icon_button.dart'; // ✅ 툴팁 적용된 아이콘 버튼 불러오기
 import 'package:firebase_auth/firebase_auth.dart';
 
+
 class FlashcardSetListScreen extends ConsumerStatefulWidget {
   const FlashcardSetListScreen({super.key});
 
@@ -22,19 +23,24 @@ class _FlashcardSetListScreenState extends ConsumerState<FlashcardSetListScreen>
   Future<void> _startFlashcardLearning(String setId) async {
     print("DEBUG => _startFlashcardLearning 실행됨! setId: $setId");
 
+    final uid = FirebaseAuth.instance.currentUser!.uid; // ✅ uid 확보
     final List<Map<String, dynamic>> flashcards = [];
-    final setDocRef = FirebaseFirestore.instance.collection('flashcard_sets').doc(setId);
+
+    final setDocRef = FirebaseFirestore.instance
+        .collection('users').doc(uid)
+        .collection('flashcard_sets').doc(setId);
+
     print("DEBUG => Firestore에서 해당 setId 문서를 찾는 중...");
 
     final itemsSnapshot = await setDocRef.collection('items').get();
     print("DEBUG => itemsSnapshot.docs.length: ${itemsSnapshot.docs.length}");
 
-    // 기존
+    // ✅ 단일 이미지 필드(imageUrl) 기준으로 구성 (중복 루프 제거)
     for (var doc in itemsSnapshot.docs) {
       final data = doc.data();
       final content = data["content"] ?? {};
 
-// 단일 이미지 URL(우선순위: content.imageUrl → 과거 front/back → 상위 레벨)
+      // 단일 이미지 URL(우선순위: content.imageUrl → 과거 front/back → 상위 레벨)
       final imageUrl = (content["imageUrl"]
           ?? content["imageFrontUrl"]
           ?? content["imageBackUrl"]
@@ -42,41 +48,15 @@ class _FlashcardSetListScreenState extends ConsumerState<FlashcardSetListScreen>
           ?? "") as String;
 
       flashcards.add({
-        "text": content["text"] ?? "[텍스트 없음]",        // 앞면(스페인어)
-        "meaning": content["meaning"] ?? "[뜻 없음]",      // 뒷면(한국어)
+        "text": content["text"] ?? "[텍스트 없음]",   // 앞면
+        "meaning": content["meaning"] ?? "[뜻 없음]", // 뒷면
         "order": content["order"] ?? data["order"] ?? 9999,
-        "imageUrl": imageUrl,                              // ✅ 단일 이미지
-      });
-
-
-    }
-
-// 교체본
-    for (var doc in itemsSnapshot.docs) {
-      final data = doc.data();
-      final content = data["content"] ?? {};
-
-      // 이미지 폴백 체인
-      final imageFront =
-      (content["imageFrontUrl"] ?? content["imageUrl"] ?? data["imageUrl"] ?? "") as String;
-      final imageBack =
-      (content["imageBackUrl"]  ?? content["imageUrl"] ?? data["imageUrl"] ?? "") as String;
-
-      flashcards.add({
-        "text": content["text"] ?? "[텍스트 없음]",
-        "meaning": content["meaning"] ?? "[뜻 없음]",
-        "order": content["order"] ?? data["order"] ?? 9999,
-        "imageFrontUrl": imageFront,
-        "imageBackUrl": imageBack,
-        // 과거 세트 호환용: content.imageUrl만 있었던 경우를 대비해 평탄화 필드도 유지(선택)
-        "imageUrl": content["imageUrl"] ?? data["imageUrl"] ?? "",
+        "imageUrl": imageUrl,                         // ✅ 단일 이미지
       });
     }
 
-
-    // flashcards 리스트를 order 필드 기준 오름차순 정렬
+    // order 정렬
     flashcards.sort((a, b) => (a["order"] as int).compareTo(b["order"] as int));
-
     print("DEBUG => flashcards (정렬 후): ${flashcards.map((card) => card["text"]).toList()}");
 
     if (flashcards.isEmpty) {
@@ -85,7 +65,6 @@ class _FlashcardSetListScreenState extends ConsumerState<FlashcardSetListScreen>
     }
 
     print("✅ 플래시카드 학습 화면으로 이동!");
-
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -162,12 +141,15 @@ class _FlashcardSetListScreenState extends ConsumerState<FlashcardSetListScreen>
             ),
           ],
         ),
+          body: Builder(
+          builder: (context) {
+        final uid = FirebaseAuth.instance.currentUser!.uid; // ✅ 로그인 보장 가정
 
-        body: StreamBuilder<QuerySnapshot>(
-
+        return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
           stream: FirebaseFirestore.instance
+              .collection('users')
+              .doc(uid)
               .collection('flashcard_sets')
-              .where('uid', isEqualTo: uid)
               .orderBy('createdAt', descending: true)
               .snapshots(),
           builder: (context, snapshot) {
@@ -179,10 +161,10 @@ class _FlashcardSetListScreenState extends ConsumerState<FlashcardSetListScreen>
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
+            final docs = snapshot.data?.docs ?? [];
 
-            final docs = snapshot.data!.docs;
             if (docs.isEmpty) {
-              return const Center(child: Text("생성된 세트가 없습니다."));
+              return const Center(child: Text('세트가 없습니다.'));
             }
 
             return Column(
@@ -285,7 +267,8 @@ class _FlashcardSetListScreenState extends ConsumerState<FlashcardSetListScreen>
               ],
             );
           },
-        ),
       );
     }
-  }
+      )
+        );}
+}

@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:langarden_common/providers/multi_select_controller.dart';
 import 'package:langarden_common/widgets/multi_select_actions.dart';
 import 'package:langarden_common/utils/firebase_multi_deleter.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class FlashcardSetEditScreen extends ConsumerStatefulWidget {
   final String setId;
@@ -30,12 +31,13 @@ class _FlashcardSetEditScreenState extends ConsumerState<FlashcardSetEditScreen>
         .doc(widget.setId)
         .get();
 
+
+    final uid = FirebaseAuth.instance.currentUser!.uid;
     final itemsSnapshot = await FirebaseFirestore.instance
-        .collection('flashcard_sets')
-        .doc(widget.setId)
-        .collection('items')
-        .orderBy('order')
-        .get();
+         .collection('users').doc(uid)
+         .collection('flashcard_sets').doc(widget.setId)
+         .collection('items')
+         .get();
 
     setState(() {
       _nameController.text = setDoc['name'] ?? '';
@@ -54,14 +56,14 @@ class _FlashcardSetEditScreenState extends ConsumerState<FlashcardSetEditScreen>
   // 세트편집 페이지 내부 deleteSelectedItems() 대체 예시
   Future<void> deleteSelectedItems() async {
     final controller = ref.read(multiSelectControllerProvider.notifier);
-
+    final uid = FirebaseAuth.instance.currentUser!.uid;
     await FirebaseMultiDeleter.deleteItems(
       context: context,
       itemIds: controller.state.toList(),
-      collectionRef: FirebaseFirestore.instance
-          .collection('flashcard_sets')
-          .doc(widget.setId)
-          .collection('items'),
+        collectionRef: FirebaseFirestore.instance
+            .collection('users').doc(uid)
+            .collection('flashcard_sets').doc(widget.setId)
+            .collection('items'),
       confirmContent: "선택한 플래시카드 항목을 삭제할까요?",
       successMessage: "선택한 플래시카드가 삭제되었습니다.",
     );
