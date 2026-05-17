@@ -1,144 +1,136 @@
-// lib/screens/main/account/account_screen.dart
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:langarden_common/auth/auth_screen.dart';
-import 'package:langbat/screens/main/main_screen.dart';
-import 'package:langarden_common/auth/profile_update_screen.dart'; // 회원정보 수정 페이지
-import 'package:langbat/screens/main/account/point_log_screen.dart';
-
+import 'package:langbat/src/services/auth_service.dart';
+import 'package:langbat/src/services/cloud_backup_service.dart';
 
 class AccountScreen extends StatelessWidget {
   const AccountScreen({super.key});
 
-  Stream<DocumentSnapshot<Map<String, dynamic>>> _userProfileStream() {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      return FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots();
-    } else {
-      return const Stream.empty();
+  Future<void> _uploadCloudBackup(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('클라우드 백업을 업로드하는 중입니다...')),
+      );
+      final result = await CloudBackupService(
+        authService: AuthService(),
+      ).uploadFullBackup();
+      messenger.showSnackBar(
+        SnackBar(content: Text('클라우드 백업 완료: ${result.backupId}')),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('클라우드 백업 실패: $e')),
+      );
     }
   }
-
-  Future<void> _logout(BuildContext context) async {
-    await FirebaseAuth.instance.signOut();
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => AuthScreen(
-          onAuthSuccess: (User user) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => MainScreen()),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-
 
   @override
   Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+
     return Scaffold(
       appBar: AppBar(title: const Text('계정')),
-      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        stream: _userProfileStream(),
-        builder: (context, snapshot) {
-    if (snapshot.connectionState == ConnectionState.waiting) {
-    return const Center(child: CircularProgressIndicator());
-    }
-    if (snapshot.hasError) {
-    return Center(child: Text('오류 발생: ${snapshot.error}'));
-    }
-    if (!snapshot.hasData || snapshot.data == null) {
-    return const Center(child: Text('사용자 정보를 찾을 수 없습니다.'));
-    }
-    final data = snapshot.data!;
-    return Padding(
-    padding: const EdgeInsets.all(16.0),
-    child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text('내 캐릭터: ${data['character'] ?? '선택되지 않음'}',
-          style: const TextStyle(fontSize: 16)),
-      const SizedBox(height: 12),
-      if (data['character'] != null)
-        Center(
-          child: Image.asset(
-            'assets/characters/${_characterToImageFile(data['character'])}',
-            height: 150,
-          ),
-        ),
-      const SizedBox(height: 8),
-      Text('이름: ${data['name'] ?? '정보 없음'}', style: const TextStyle(fontSize: 16)),
-      const SizedBox(height: 8),
-      Text('이메일: ${data['email'] ?? '정보 없음'}', style: const TextStyle(fontSize: 16)),
-    const SizedBox(height: 8),
-    // 비밀번호는 표시할 수 없습니다.
-    Text('전화번호: ${data['phone'] ?? '정보 없음'}', style: const TextStyle(fontSize: 16)),
-      const SizedBox(height: 8),
-      Text('포인트: ${data['points'] ?? 0}점', style: const TextStyle(fontSize: 16)),
-      const SizedBox(height: 24),
-      Center(
-        child: ElevatedButton.icon(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const PointLogScreen()),
-            );
-          },
-          icon: const Icon(Icons.history),
-          label: const Text('포인트 내역 보기'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            textStyle: const TextStyle(fontSize: 16),
-          ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '로그인 정보',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 16),
+                    _InfoRow(
+                      icon: Icons.email_outlined,
+                      label: '이메일',
+                      value: user?.email ?? '알 수 없음',
+                    ),
+                    const SizedBox(height: 12),
+                    _InfoRow(
+                      icon: Icons.badge_outlined,
+                      label: '사용자 ID',
+                      value: user?.uid ?? '로그인 정보 없음',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      '백업',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '현재 기기의 로컬 학습 데이터를 zip으로 묶어 Firebase에 업로드합니다.',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 16),
+                    FilledButton.icon(
+                      onPressed: user == null
+                          ? null
+                          : () => _uploadCloudBackup(context),
+                      icon: const Icon(Icons.cloud_upload_outlined),
+                      label: const Text('클라우드 백업 업로드'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: () => FirebaseAuth.instance.signOut(),
+              icon: const Icon(Icons.logout),
+              label: const Text('로그아웃'),
+            ),
+          ],
         ),
       ),
-      const Spacer(),
-    Row(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-    ElevatedButton(
-    onPressed: () {
-    Navigator.push(
-    context,
-    MaterialPageRoute(builder: (context) => ProfileUpdateScreen(user: FirebaseAuth.instance.currentUser!)),
     );
-    },
-    child: const Text('회원정보 수정'),
-    ),
-
-    const SizedBox(width: 20),
-    ElevatedButton(
-    onPressed: () => _logout(context),
-    child: const Text('로그아웃'),
-    ),
-    ],
-    ),
-    ],
-    ),
-    );
-    },
-    ),
-    );
-
-  }String _characterToImageFile(String characterName) {
-    switch (characterName) {
-      case '농부':
-        return 'farmer.png';
-      case '까마귀':
-        return 'crow.png';
-      case '생쥐':
-        return 'mouse.png';
-      case '당나귀':
-        return 'donkey.png';
-      default:
-        return 'farmer.png';
-    }
   }
+}
 
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 20),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: Theme.of(context).textTheme.labelMedium),
+              const SizedBox(height: 2),
+              SelectableText(value),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }

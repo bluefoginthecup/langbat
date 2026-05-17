@@ -58,6 +58,8 @@ dependencies:
   riverpod_annotation: ^2.6.1
 
   cloud_firestore: any
+  firebase_storage: ^12.4.4
+  google_sign_in: ^6.2.2
   flutter_tts: any
   audio_service: any
   just_audio: ^0.9.46

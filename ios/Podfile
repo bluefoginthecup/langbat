@@ -44,4 +44,30 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
   end
+
+  frameworks_script = File.join(
+    __dir__,
+    'Pods',
+    'Target Support Files',
+    'Pods-Runner',
+    'Pods-Runner-frameworks.sh'
+  )
+
+  if File.exist?(frameworks_script)
+    script = File.read(frameworks_script)
+    script = script.gsub('set +u', 'set -u')
+    script = script.gsub(
+      "install_framework()\n{\n",
+      "install_framework()\n{\n  local source=\"\"\n"
+    )
+    script = script.gsub(
+      "  local destination=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}\"\n",
+      "  if [ -z \"${source}\" ] && [ -n \"${PODS_CONFIGURATION_BUILD_DIR:-}\" ]; then\n    local pod_subdir\n    local pod_framework\n    pod_subdir=\"$(basename \"$(dirname \"$1\")\")\"\n    pod_framework=\"$(basename \"$1\")\"\n    if [ -r \"${PODS_CONFIGURATION_BUILD_DIR}/${pod_subdir}/${pod_framework}\" ]; then\n      source=\"${PODS_CONFIGURATION_BUILD_DIR}/${pod_subdir}/${pod_framework}\"\n    fi\n  fi\n\n  local destination=\"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}\"\n"
+    )
+    script = script.gsub(
+      "  if [ -L \"${source}\" ]; then\n",
+      "  if [ -z \"${source}\" ]; then\n    echo \"warning: [CP] Framework '$1' not found; skipping.\"\n    return\n  fi\n\n  if [ -L \"${source}\" ]; then\n"
+    )
+    File.write(frameworks_script, script)
+  end
 end

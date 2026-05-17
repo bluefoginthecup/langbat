@@ -1,6 +1,8 @@
 // lib/screens/main/my_list/my_list_screen.dart
 import 'package:flutter/material.dart';
 import 'package:langbat/screens/main/my_list/custom_list_screen.dart';
+import 'package:langbat/src/services/auth_service.dart';
+import 'package:langbat/src/services/cloud_backup_service.dart';
 import 'package:langbat/src/services/full_backup_service.dart';
 import 'verb_list_screen.dart';
 import 'sentence_list_screen.dart';
@@ -32,6 +34,25 @@ class MyListScreen extends StatelessWidget {
     } catch (e) {
       messenger.showSnackBar(
         SnackBar(content: Text('백업 생성 실패: $e')),
+      );
+    }
+  }
+
+  Future<void> _uploadCloudBackup(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('클라우드 백업을 업로드하는 중입니다...')),
+      );
+      final result = await CloudBackupService(
+        authService: AuthService(),
+      ).uploadFullBackup();
+      messenger.showSnackBar(
+        SnackBar(content: Text('클라우드 백업 완료: ${result.backupId}')),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('클라우드 백업 실패: $e')),
       );
     }
   }
@@ -85,6 +106,12 @@ class MyListScreen extends StatelessWidget {
               onPressed: () => _createLocalBackup(context),
               icon: const Icon(Icons.archive_outlined),
               label: const Text("로컬 백업 생성"),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () => _uploadCloudBackup(context),
+              icon: const Icon(Icons.cloud_upload_outlined),
+              label: const Text("클라우드 백업 업로드"),
             ),
           ],
         ),

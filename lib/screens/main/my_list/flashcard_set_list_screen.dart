@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:langbat/screens/main/study/flashcard/flashcard_set_edit_screen.dart';
 import 'package:langbat/screens/main/study/flashcard/flashcard_study_screen.dart';
 import 'package:langbat/src/repos/flashcard_repository.dart';
 import 'package:langbat/src/repos/local_models.dart';
@@ -34,6 +35,15 @@ class _FlashcardSetListScreenState extends State<FlashcardSetListScreen> {
         builder: (_) => FlashcardStudyScreen(
           flashcards: cards.map((card) => card.toStudyMap()).toList(),
         ),
+      ),
+    );
+  }
+
+  Future<void> _editSet(String setId) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FlashcardSetEditScreen(setId: setId),
       ),
     );
   }
@@ -141,10 +151,21 @@ class _FlashcardSetListScreenState extends State<FlashcardSetListScreen> {
                 title: Text(set.title),
                 subtitle: Text('${set.itemCount}장'),
                 onLongPress: () => _toggleSelection(set.id),
-                trailing: IconButton(
-                  tooltip: '학습',
-                  icon: const Icon(Icons.play_circle_outline),
-                  onPressed: () => _startFlashcardLearning(set.id),
+                onTap: () => _startFlashcardLearning(set.id),
+                trailing: Wrap(
+                  spacing: 4,
+                  children: [
+                    IconButton(
+                      tooltip: '편집',
+                      icon: const Icon(Icons.edit_outlined),
+                      onPressed: () => _editSet(set.id),
+                    ),
+                    IconButton(
+                      tooltip: '학습',
+                      icon: const Icon(Icons.play_circle_outline),
+                      onPressed: () => _startFlashcardLearning(set.id),
+                    ),
+                  ],
                 ),
               );
             },
