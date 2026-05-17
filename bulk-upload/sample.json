@@ -1,0 +1,123 @@
+[{
+    "name": "샘플리스트",
+    "type": "category",
+    "data": {},
+    "children": [
+      {
+        "name": "기초동사",
+        "type": "category",
+        "data": {},
+        "children": [
+          {
+            "name": "bañarse ",
+            "type": "data",
+            "data": {
+              "뜻": "목욕하다"
+            },
+            "children": [
+              {
+                "name": "단순과거",
+                "type": "category",
+                "data": {},
+                "children": [
+                  {
+                    "name": "bane,banaste,bano,banamos,banasteis,banaron",
+                    "type": "data",
+                    "data": {
+                      "뜻": "목욕했다"
+                    },
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "name": "현재",
+                "type": "category",
+                "data": {},
+                "children": [
+                  {
+                    "name": "bano,banas,banalbnamos,banais,banan",
+                    "type": "data",
+                    "data": {
+                      "뜻": "목욕하다"
+                    },
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "name": "불완료과거",
+                "type": "category",
+                "data": {},
+                "children": [
+                  {
+                    "name": "banaba,banabas,banaba,banabamos,banabais,banaban",
+                    "type": "data",
+                    "data": {
+                      "뜻": "목욕하곤 했다"
+                    },
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "buscar",
+            "type": "data",
+            "data": {
+              "뜻": "찾다"
+            },
+            "children": [
+             {
+                "name": "현재",
+                "type": "category",
+                "data": {},
+                "children": [
+                  {
+                    "name": "busco,buscas,busca,buscamos,buscáis,buscan",
+                    "type": "data",
+                    "data": {
+                      "뜻": "찾다"
+                    },
+                    "children": []
+                  }
+                ]
+              },    
+              {
+                "name": "단순과거",
+                "type": "category",
+                "data": {},
+                "children": [
+                  {
+                    "name": "busqué,buscaste,buscó,buscamos,buscastéis,buscaron",
+                    "type": "data",
+                    "data": {
+                      "뜻": "찾았다"
+                    },
+                    "children": []
+                  }
+                ]
+              },
+              {
+                "name": "불완료과거",
+                "type": "category",
+                "data": {},
+                "children": [
+                  {
+                    "name": "buscaba,buscabas,buscaba,buscábamos,buscabais,buscaban",
+                    "type": "data",
+                    "data": {
+                      "뜻": "찾곤 했다"
+                    },
+                    "children": []
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+] 

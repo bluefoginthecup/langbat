@@ -32,6 +32,11 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+**/build/
+
+# Node tooling
+node_modules/
+**/node_modules/
 
 # Symbolication related
 app.*.symbols
@@ -43,3 +48,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local diagnostics and secrets
+custom_lint.log
+file_tree.txt
+devtools_options.yaml
+serviceAccountKey.json

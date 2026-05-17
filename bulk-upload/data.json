@@ -1,0 +1,64 @@
+[
+    {
+      "text": "venir",
+      "meaning": "오다",
+      "createdAt": "2025-03-15T12:00:00Z",
+      "frontLanguage": "es-ES",
+      "backLanguage": "ko-KR",
+      "conjugations": {
+        "present": {
+          "yo": "vengo",
+          "tú": "vienes",
+          "él/ella/Ud": "viene",
+          "nosotros": "venimos",
+          "vosotros": "venís",
+          "ellos/ellas/Uds": "vienen"
+        },
+        "preterite": {
+          "yo": "vine",
+          "tú": "viniste",
+          "él/ella/Ud": "vino",
+          "nosotros": "vinimos",
+          "vosotros": "vinisteis",
+          "ellos/ellas/Uds": "vinieron"
+        },
+        "imperfect": {
+          "yo": "venía",
+          "tú": "venías",
+          "él/ella/Ud": "venía",
+          "nosotros": "veníamos",
+          "vosotros": "veníais",
+          "ellos/ellas/Uds": "venían"
+        },
+        "future": {
+          "yo": "vendré",
+          "tú": "vendrás",
+          "él/ella/Ud": "vendrá",
+          "nosotros": "vendremos",
+          "vosotros": "vendréis",
+          "ellos/ellas/Uds": "vendrán"
+        },
+        "subjunctive": {
+          "yo": "venga",
+          "tú": "vengas",
+          "él/ella/Ud": "venga",
+          "nosotros": "vengamos",
+          "vosotros": "vengáis",
+          "ellos/ellas/Uds": "vengan"
+        },
+        "imperative": {
+          "tú": "ven",
+          "él/ella/Ud": "venga",
+          "nosotros": "vengamos",
+          "vosotros": "venid",
+          "ellos/ellas/Uds": "vengan"
+        }
+      },
+      "examples": {
+        "beginner": "Yo vengo a la escuela todos los días.",
+        "intermediate": "Nosotros venimos al supermercado los domingos.",
+        "advanced": "Ellos vienen a la oficina temprano."
+      }
+    }
+  ]
+  
