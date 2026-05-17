@@ -1,194 +1,172 @@
-// lib/screens/main/my_list/verb_list_screen.dart
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import '../input/verb_detail_input_screen.dart' show VerbDetailInputScreen;
 import 'package:langarden_common/widgets/multi_select_actions.dart';
-import 'package:langarden_common/utils/trash_manager.dart';
 
-import '../cart/cart_screen.dart';
-
+import '../../../src/repos/flashcard_repository.dart';
+import '../../../src/repos/local_models.dart';
+import '../../../src/repos/term_repository.dart';
+import '../input/verb_detail_input_screen.dart' show VerbDetailInputScreen;
 
 class VerbListScreen extends StatefulWidget {
   const VerbListScreen({super.key});
 
   @override
-  _VerbListScreenState createState() => _VerbListScreenState();
+  State<VerbListScreen> createState() => _VerbListScreenState();
 }
 
 class _VerbListScreenState extends State<VerbListScreen> {
-  bool multiSelectMode = false; // 멀티 선택 모드 활성화 여부
-  final Set<String> selectedIds = {}; // 선택된 동사의 문서 ID들을 저장
+  final _terms = TermRepository();
+  final _sets = FlashcardRepository();
+  final Set<String> selectedIds = {};
+  bool multiSelectMode = false;
 
-  // 멀티 선택 모드 토글 함수
   void toggleMultiSelect() {
     setState(() {
       multiSelectMode = !multiSelectMode;
-      if (!multiSelectMode) {
-        selectedIds.clear();
-      }
+      if (!multiSelectMode) selectedIds.clear();
     });
   }
 
-  // 전체 선택 토글: docs 목록을 받아 전체 선택 혹은 해제
-  void toggleSelectAll(List<DocumentSnapshot> docs) {
+  void toggleSelectAll(List<LocalTerm> terms) {
     setState(() {
-      if (selectedIds.length < docs.length) {
-        selectedIds.clear();
-        for (var doc in docs) {
-          selectedIds.add(doc.id);
-        }
+      if (selectedIds.length < terms.length) {
+        selectedIds
+          ..clear()
+          ..addAll(terms.map((term) => term.id));
       } else {
         selectedIds.clear();
       }
     });
   }
 
-  // 선택된 동사들을 휴지통으로 보내는 함수 (기존 로직 사용)
   Future<void> sendSelectedToTrash() async {
-    await TrashManager.moveItemsToTrash(
-      context: context,
-      docIds: selectedIds.toList(),
-      originalCollection: 'verbs',
-      trashCollection: 'trash',
-      itemType: 'verb',
-    );
+    await _terms.softDeleteTerms(selectedIds);
+    if (!mounted) return;
     setState(() {
       selectedIds.clear();
       multiSelectMode = false;
     });
   }
 
-
   Future<void> addSelectedToCart() async {
-    final cartRef = FirebaseFirestore.instance.collection('cart');
-    final verbsRef = FirebaseFirestore.instance.collection('verbs');
-
-    try {
-      WriteBatch batch = FirebaseFirestore.instance.batch();
-
-      for (var docId in selectedIds) {
-        final docSnapshot = await verbsRef.doc(docId).get();
-        if (docSnapshot.exists) {
-          final data = docSnapshot.data();
-          batch.set(cartRef.doc(docId), {
-            "type": "verb",
-            "originalId": docId,
-            "data": data,
-            "addedAt": FieldValue.serverTimestamp(),
-          });
-        }
-      }
-
-      await batch.commit();
-      setState(() {
-        selectedIds.clear();
-        multiSelectMode = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("장바구니에 추가되었습니다.")),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("장바구니 추가 실패: $e")),
-      );
-    }
+    if (selectedIds.isEmpty) return;
+    await _sets.createSetFromTerms(
+      title: '동사 세트 ${DateTime.now().month}/${DateTime.now().day}',
+      termIds: selectedIds.toList(growable: false),
+    );
+    if (!mounted) return;
+    setState(() {
+      selectedIds.clear();
+      multiSelectMode = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('선택한 동사로 플래시카드 세트를 만들었습니다.')),
+    );
   }
 
+  Future<void> _openEditor([LocalTerm? term]) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => VerbDetailInputScreen(
+          termId: term?.id,
+          text: term?.frontText ?? '',
+          meaning: term?.backText ?? '',
+        ),
+      ),
+    );
+  }
 
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.auto_stories_outlined, size: 56),
+            const SizedBox(height: 16),
+            const Text('저장된 동사가 없습니다.'),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: () => _openEditor(),
+              icon: const Icon(Icons.add),
+              label: const Text('동사 추가'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("동사리스트"),
-        actions: [ IconButton(
-          icon: Icon(Icons.add),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const VerbDetailInputScreen()),
-            );
-          },
-        ),
+        title: const Text('동사리스트'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.add),
+            tooltip: '동사 추가',
+            onPressed: () => _openEditor(),
+          ),
           IconButton(
             icon: Icon(multiSelectMode ? Icons.cancel : Icons.checklist),
-            tooltip: multiSelectMode ? "멀티 선택 해제" : "멀티 선택 모드",
+            tooltip: multiSelectMode ? '멀티 선택 해제' : '멀티 선택 모드',
             onPressed: toggleMultiSelect,
           ),
-            IconButton(
-              icon: Icon(Icons.shopping_cart_checkout),
-              onPressed: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => CartScreen()));
-              },
-            ),
         ],
-          ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('verbs').snapshots(),
+      ),
+      body: StreamBuilder<List<LocalTerm>>(
+        stream: _terms.watchTerms(type: 'verb'),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return Center(child: Text("오류: ${snapshot.error}"));
+            return Center(child: Text('오류: ${snapshot.error}'));
           }
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
-          final docs = snapshot.data!.docs;
-          if (docs.isEmpty) {
-            return const Center(child: Text("저장된 동사가 없습니다."));
-          }
+
+          final terms = snapshot.data!;
+          if (terms.isEmpty) return _buildEmptyState();
+
           return Column(
             children: [
-              // 멀티 선택 모드가 활성화되면 상단에 MultiSelectActions 위젯 추가
               if (multiSelectMode)
-              MultiSelectActions(
-                allSelected: selectedIds.length == docs.length,
-                onToggleSelectAll: () => toggleSelectAll(docs),
-                onTrash: selectedIds.isEmpty ? () {} : sendSelectedToTrash,
-                onCart: addSelectedToCart,
-              ),
-
+                MultiSelectActions(
+                  allSelected: selectedIds.length == terms.length,
+                  onToggleSelectAll: () => toggleSelectAll(terms),
+                  onTrash: selectedIds.isEmpty ? () {} : sendSelectedToTrash,
+                  onCart: addSelectedToCart,
+                ),
               Expanded(
-                child: ListView.builder(
-                  itemCount: docs.length,
+                child: ListView.separated(
+                  itemCount: terms.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (context, index) {
-                    final doc = docs[index];
-                    final data = doc.data() as Map<String, dynamic>;
-                    final text = data["text"] ?? "";
-                    final meaning = data["meaning"] ?? "";
-                    final docId = doc.id;
+                    final term = terms[index];
                     if (multiSelectMode) {
                       return CheckboxListTile(
-                        title: Text(text),
-                        subtitle: Text(meaning),
-                        value: selectedIds.contains(docId),
-                        onChanged: (bool? value) {
+                        title: Text(term.frontText),
+                        subtitle: Text(term.backText),
+                        value: selectedIds.contains(term.id),
+                        onChanged: (value) {
                           setState(() {
                             if (value == true) {
-                              selectedIds.add(docId);
+                              selectedIds.add(term.id);
                             } else {
-                              selectedIds.remove(docId);
+                              selectedIds.remove(term.id);
                             }
                           });
                         },
                       );
-                    } else {
-                      return ListTile(
-                        title: Text(text),
-                        subtitle: Text(meaning),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => VerbDetailInputScreen(
-                                text: text,
-                                meaning: meaning,
-                              ),
-                            ),
-                          );
-                        },
-                      );
                     }
+
+                    return ListTile(
+                      title: Text(term.frontText),
+                      subtitle: Text(term.backText),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () => _openEditor(term),
+                    );
                   },
                 ),
               ),
@@ -196,6 +174,6 @@ class _VerbListScreenState extends State<VerbListScreen> {
           );
         },
       ),
-      );
+    );
   }
 }

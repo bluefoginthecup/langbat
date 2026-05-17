@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_swiper_view/flutter_swiper_view.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:langbat/src/repos/settings_repository.dart';
 import '../main/main_screen.dart';
 
 class CharacterSelectScreen extends StatefulWidget {
@@ -33,19 +32,14 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
 
   int _selectedIndex = 0;
   bool _isSaving = false;
+  final _settings = SettingsRepository();
 
   Future<void> _saveCharacter() async {
     setState(() => _isSaving = true);
 
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
     final selectedCharacter = characters[_selectedIndex]['name'];
-
-    await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-      'character': selectedCharacter,
-      'characterSetAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    if (selectedCharacter == null) return;
+    await _settings.setString('character', selectedCharacter);
 
     if (mounted) {
       Navigator.pushReplacement(
@@ -87,7 +81,8 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
                       const SizedBox(height: 20),
                       Text(
                         characters[index]['name']!,
-                        style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                            fontSize: 24, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
@@ -102,14 +97,15 @@ class _CharacterSelectScreenState extends State<CharacterSelectScreen> {
             child: _isSaving
                 ? const CircularProgressIndicator()
                 : ElevatedButton(
-              onPressed: _saveCharacter,
-              child: const Text('이 캐릭터로 시작하기'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-                textStyle: const TextStyle(fontSize: 18),
-              ),
-            ),
+                    onPressed: _saveCharacter,
+                    child: const Text('이 캐릭터로 시작하기'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 32, vertical: 16),
+                      textStyle: const TextStyle(fontSize: 18),
+                    ),
+                  ),
           ),
         ],
       ),

@@ -1,29 +1,21 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:langbat/src/repos/study_repository.dart';
 
 class PointService {
+  static final StudyRepository _studyRepository = StudyRepository();
+
   static Future<void> addPoint({
     required int amount,
     required String type,
     required String description,
-  }) async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+  }) {
+    return _studyRepository.addPointLog(
+      amount: amount,
+      type: type,
+      description: description,
+    );
+  }
 
-    final userRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-    final logRef = userRef.collection('pointLogs').doc();
-    final now = DateTime.now();
-
-    await FirebaseFirestore.instance.runTransaction((txn) async {
-      txn.update(userRef, {
-        'points': FieldValue.increment(amount),
-      });
-      txn.set(logRef, {
-        'timestamp': now.toIso8601String(),
-        'amount': amount,
-        'type': type,
-        'description': description,
-      });
-    });
+  static Future<int> totalPoints() {
+    return _studyRepository.totalPoints();
   }
 }

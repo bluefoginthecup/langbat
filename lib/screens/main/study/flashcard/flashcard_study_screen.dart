@@ -1,13 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:langarden_common/widgets/tts_controls.dart';
-import 'package:langarden_common/widgets/icon_button.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:langbat/services/point_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-
 
 class FlashcardStudyScreen extends StatefulWidget {
   final List<Map<String, dynamic>> flashcards;
@@ -33,6 +32,9 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
   final FlutterTts _flutterTts = FlutterTts();
   String _frontLanguage = "es-ES";
   String _backLanguage = "ko-KR";
+  List<Map<String, String>> _availableVoices = [];
+  Map<String, String>? _frontVoice;
+  Map<String, String>? _backVoice;
   double _fontSize = 28.0;
   double _ttsSpeed = 0.5;
 
@@ -51,66 +53,61 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       IosTextToSpeechAudioCategory.playback,
       [IosTextToSpeechAudioCategoryOptions.mixWithOthers],
     );
-    loadTTSSettingsLocally();
+    _initializeTTSSettings();
+  }
+
+  Future<void> _initializeTTSSettings() async {
+    await loadTTSSettingsLocally();
+    await _loadAvailableVoices();
   }
 
   Future<bool> _onWillPop() async {
-    await _givePoints();
     final shouldExit = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text("학습을 종료할까요?"),
+        content: Text(
+          _playCount > 0
+              ? "지금까지 플래시카드 ${_playCount}장을 학습했어요.\n종료하면 포인트가 저장됩니다."
+              : "현재 학습 화면을 닫습니다.",
+        ),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.of(context).pop(false);
-              showDialog(
-                context: context,
-                builder: (BuildContext dialogContext) => AlertDialog(
-                  content: const Text("좋아요, 더 열심히 해봐요! 🔥"),
-                  actions: [
-                    TextButton(
-                      onPressed: () {
-                        if (!mounted) return;
-                        Navigator.of(dialogContext).pop();
-                      },
-                      child: const Text("확인"),
-                    ),
-                  ],
-                ),
-              );
             },
             child: const Text("취소"),
           ),
           TextButton(
-            onPressed: () async {
-              Navigator.of(context).pop(true);
-              await Future.delayed(const Duration(milliseconds: 100)); // context 안정화 대기
-              if (!mounted) return;
-              await _givePoints();
-              showDialog(
-                context: context,
-                builder: (context) {
-                  return AlertDialog(
-                    content: Text(
-                      "지금까지 플래시카드 ${_playCount}장을 학습했어요!\n+${_playCount}점이 적립됩니다 🎁",
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text("확인"),
-                      ),
-                    ],
-                  );
-                },
-              );
-            },
+            onPressed: () => Navigator.of(context).pop(true),
             child: const Text("종료"),
           ),
         ],
       ),
     );
-    return shouldExit ?? false;
+
+    if (shouldExit != true) return false;
+
+    await _stopPlaybackForExit();
+    await _givePoints();
+    return true;
+  }
+
+  Future<void> _stopPlaybackForExit() async {
+    _isPlaying = false;
+    _isPaused = false;
+    _stopCountdown();
+    await _flutterTts.stop();
+    await AudioService.pause();
+  }
+
+  @override
+  void dispose() {
+    _isPlaying = false;
+    _isPaused = false;
+    _stopCountdown();
+    _flutterTts.stop();
+    super.dispose();
   }
 
   @override
@@ -123,138 +120,89 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     }
 
     final currentCard = _cards[_currentIndex];
-    final frontText = (currentCard["text"] ?? "") as String;       // 스페인어
-    final backText  = (currentCard["meaning"] ?? "") as String;    // 한국어
-    final imageUrl  = (currentCard["imageUrl"] ?? "") as String;   // ✅ 단일 이미지
-    final displayText = _showMeaning ? backText : frontText;       // 텍스트만 전환
+    final frontText = (currentCard["text"] ?? "") as String; // 스페인어
+    final backText = (currentCard["meaning"] ?? "") as String; // 한국어
+    final imageUrl = (currentCard["imageUrl"] ?? "") as String; // ✅ 단일 이미지
+    final displayText = _showMeaning ? backText : frontText; // 텍스트만 전환
     final size = MediaQuery.of(context).size;
     final isLandscape = size.width > size.height;
     final isTablet = size.shortestSide >= 600;
-    final imgFlex  = (isTablet && isLandscape) ? 8 : 7;
-    final textFlex = (isTablet && isLandscape) ? 2 : 3;
-
-
+    final hasImage = imageUrl.isNotEmpty;
 
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
-        appBar: AppBar(title: const Text("플래시카드 학습")),
-        body: Column(
-          children: [
-            // ⬇️ Row가 화면 높이를 확실히 배분받도록 Expanded로 감싼다
-            Expanded(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch, // ⬅️ 자식들에게 유한한 높이 제공
+        appBar: AppBar(
+          toolbarHeight: 48,
+          title: const Text("플래시카드 학습"),
+          actions: [
+            IconButton(
+              tooltip: "첫 카드",
+              icon: const Icon(Icons.first_page),
+              onPressed: _goToFirstCard,
+            ),
+            IconButton(
+              tooltip: "마지막 카드",
+              icon: const Icon(Icons.last_page),
+              onPressed: _goToLastCard,
+            ),
+          ],
+        ),
+        body: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              isLandscape ? 56 : 20,
+              12,
+              isLandscape ? 56 : 20,
+              8,
+            ),
+            child: GestureDetector(
+              onTap: () => setState(() => _showMeaning = !_showMeaning),
+              child: Stack(
                 children: [
-                  // 좌측 네비 버튼 스택(원하면 폭 고정)
-                  SizedBox(
-                    width: 56,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        AppIconButton(icon: Icons.first_page, onPressed: _goToFirstCard),
-                        const SizedBox(height: 8),
-                        AppIconButton(
-                          icon: Icons.arrow_back,
-                          onPressed: _currentIndex > 0 || _repeatEnabled ? _goToPreviousCard : null,
-                        ),
-                      ],
+                  Positioned.fill(
+                    child: _FlashcardContent(
+                      text: displayText,
+                      imageUrl: imageUrl,
+                      hasImage: hasImage,
+                      isLandscape: isLandscape,
+                      isTablet: isTablet,
+                      maxFontSize: _fontSize,
                     ),
                   ),
-
-                  // 가운데: 카드 표시 영역
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() => _showMeaning = !_showMeaning),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                    Expanded(
-                    flex: imgFlex,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      child: Center(
-                        child: imageUrl.isEmpty
-                            ? const SizedBox.shrink()
-                            : FractionallySizedBox(
-                          // 아이패드 가로에서 이미지 더 크게
-                          widthFactor: (isTablet && isLandscape) ? 0.72 : 0.9,
-                          child: AspectRatio(
-                            aspectRatio: 1.5, // width / height = 6 / 4
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(14),
-                              child: CachedNetworkImage(
-                                imageUrl: imageUrl,
-                                fit: BoxFit.cover, // 비율 유지하며 채우기(가벼운 중앙 크롭)
-                                placeholder: (ctx, _) =>
-                                const Center(child: CircularProgressIndicator()),
-                                errorWidget: (ctx, _, __) =>
-                                const Icon(Icons.broken_image, size: 48),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: _NavButton(
+                      icon: Icons.chevron_left,
+                      onPressed: _currentIndex > 0 || _repeatEnabled
+                          ? _goToPreviousCard
+                          : null,
                     ),
                   ),
-
-// 텍스트 Expanded는 flex: textFlex 로
-                  Expanded(
-                    flex: textFlex,
-                    child: Center(
-                      child: SingleChildScrollView(
-                        physics: const BouncingScrollPhysics(),
-                        child: Text(
-                          displayText,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: _fontSize),
-                        ),
-                      ),
-                    ),
-                  ),
-
-                ],
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  // 우측 네비 버튼 스택
-                  SizedBox(
-                    width: 56,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        AppIconButton(
-                          icon: Icons.arrow_forward,
-                          onPressed: _currentIndex < _cards.length - 1 || _repeatEnabled
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: _NavButton(
+                      icon: Icons.chevron_right,
+                      onPressed:
+                          _currentIndex < _cards.length - 1 || _repeatEnabled
                               ? _goToNextCard
                               : null,
-                        ),
-                        const SizedBox(height: 8),
-                        AppIconButton(icon: Icons.last_page, onPressed: _goToLastCard),
-                      ],
                     ),
                   ),
                 ],
               ),
             ),
-
-            const SizedBox(height: 12),
-            Text("카드 ${_currentIndex + 1} / ${_cards.length}", style: const TextStyle(fontSize: 16)),
-            const SizedBox(height: 20),
-          ],
+          ),
         ),
-
         bottomNavigationBar: Padding(
-          padding: const EdgeInsets.only(bottom: 0, top: 10.0),
+          padding: EdgeInsets.zero,
           child: TTSControls(
             onToggleTTS: _toggleTTS,
             onChangeReadingMode: _changeReadingMode,
             onChangeSpeed: _changeSpeed,
             currentTtsSpeed: _ttsSpeed,
+            currentFontSize: _fontSize,
             onChangeRepeat: _changeRepeat,
             onToggleShuffle: _toggleShuffle,
             onChangeTimer: _setTimer,
@@ -268,6 +216,11 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
             isPaused: _isPaused,
             frontLanguage: _frontLanguage,
             backLanguage: _backLanguage,
+            frontVoice: _frontVoice,
+            backVoice: _backVoice,
+            availableVoices: _availableVoices,
+            onChangeFrontVoice: _changeFrontVoice,
+            onChangeBackVoice: _changeBackVoice,
             remainingTime: _remainingTime,
           ),
         ),
@@ -283,7 +236,8 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     setState(() {
       _isPlaying = true;
       _isPaused = false;
-      _remainingTime = _timerMinutes > 0 ? Duration(minutes: _timerMinutes) : null;
+      _remainingTime =
+          _timerMinutes > 0 ? Duration(minutes: _timerMinutes) : null;
     });
 
     if (_remainingTime != null) _startCountdown();
@@ -304,6 +258,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     await _flutterTts.stop();
     _stopCountdown();
 
+    if (!mounted) return;
     setState(() {
       _isPlaying = false;
       _isPaused = false;
@@ -338,6 +293,10 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     await prefs.setInt('timerMinutes', _timerMinutes);
     await prefs.setString('frontLanguage', _frontLanguage);
     await prefs.setString('backLanguage', _backLanguage);
+    await prefs.setString('frontVoiceName', _frontVoice?['name'] ?? '');
+    await prefs.setString('frontVoiceLocale', _frontVoice?['locale'] ?? '');
+    await prefs.setString('backVoiceName', _backVoice?['name'] ?? '');
+    await prefs.setString('backVoiceLocale', _backVoice?['locale'] ?? '');
     await prefs.setDouble('fontSize', _fontSize);
   }
 
@@ -356,6 +315,103 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     });
 
     _flutterTts.setSpeechRate(_ttsSpeed);
+  }
+
+  Future<void> _loadAvailableVoices() async {
+    try {
+      final voices = await _flutterTts.getVoices;
+      if (voices is! List) return;
+
+      final normalizedVoices = <Map<String, String>>[];
+      final seen = <String>{};
+
+      for (final rawVoice in voices) {
+        if (rawVoice is! Map) continue;
+
+        final name = rawVoice['name']?.toString() ?? '';
+        final locale =
+            (rawVoice['locale'] ?? rawVoice['language'])?.toString() ?? '';
+        if (name.isEmpty || locale.isEmpty) continue;
+
+        final key = '$name|$locale';
+        if (seen.add(key)) {
+          normalizedVoices.add({
+            'name': name,
+            'locale': locale,
+          });
+        }
+      }
+
+      normalizedVoices.sort((a, b) {
+        final aLocale = a['locale'] ?? '';
+        final bLocale = b['locale'] ?? '';
+        final aName = a['name'] ?? '';
+        final bName = b['name'] ?? '';
+        final localeCompare = aLocale.compareTo(bLocale);
+        return localeCompare == 0 ? aName.compareTo(bName) : localeCompare;
+      });
+
+      final prefs = await SharedPreferences.getInstance();
+      final frontVoice = _findStoredVoice(
+        normalizedVoices,
+        prefs.getString('frontVoiceName'),
+        prefs.getString('frontVoiceLocale'),
+      );
+      final backVoice = _findStoredVoice(
+        normalizedVoices,
+        prefs.getString('backVoiceName'),
+        prefs.getString('backVoiceLocale'),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _availableVoices = normalizedVoices;
+        _frontVoice = _voiceMatchesLanguage(frontVoice, _frontLanguage)
+            ? frontVoice
+            : null;
+        _backVoice =
+            _voiceMatchesLanguage(backVoice, _backLanguage) ? backVoice : null;
+      });
+    } catch (e) {
+      debugPrint('Failed to load TTS voices: $e');
+    }
+  }
+
+  Map<String, String>? _findStoredVoice(
+    List<Map<String, String>> voices,
+    String? name,
+    String? locale,
+  ) {
+    if (name == null || name.isEmpty || locale == null || locale.isEmpty) {
+      return null;
+    }
+
+    for (final voice in voices) {
+      if (voice['name'] == name && voice['locale'] == locale) {
+        return voice;
+      }
+    }
+    return null;
+  }
+
+  bool _voiceMatchesLanguage(Map<String, String>? voice, String language) {
+    if (voice == null) return false;
+    final locale = voice['locale'] ?? '';
+    final languagePrefix = language.split('-').first;
+    return locale == language ||
+        locale.startsWith('$languagePrefix-') ||
+        locale.startsWith('${languagePrefix}_');
+  }
+
+  Future<void> _applyTtsVoice({
+    required String language,
+    required Map<String, String>? voice,
+  }) async {
+    if (_voiceMatchesLanguage(voice, language)) {
+      await _flutterTts.setVoice(voice!);
+    } else {
+      await _flutterTts.setLanguage(language);
+    }
   }
 
   void _changeReadingMode(String mode) {
@@ -403,12 +459,32 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
   }
 
   void _changeFrontLanguage(String lang) {
-    setState(() => _frontLanguage = lang);
+    setState(() {
+      _frontLanguage = lang;
+      if (!_voiceMatchesLanguage(_frontVoice, lang)) {
+        _frontVoice = null;
+      }
+    });
     saveTTSSettingsLocally();
   }
 
   void _changeBackLanguage(String lang) {
-    setState(() => _backLanguage = lang);
+    setState(() {
+      _backLanguage = lang;
+      if (!_voiceMatchesLanguage(_backVoice, lang)) {
+        _backVoice = null;
+      }
+    });
+    saveTTSSettingsLocally();
+  }
+
+  void _changeFrontVoice(Map<String, String>? voice) {
+    setState(() => _frontVoice = voice);
+    saveTTSSettingsLocally();
+  }
+
+  void _changeBackVoice(Map<String, String>? voice) {
+    setState(() => _backVoice = voice);
     saveTTSSettingsLocally();
   }
 
@@ -471,6 +547,10 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
   void _startCountdown() {
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
       if (_remainingTime == null || _remainingTime!.inSeconds <= 0) {
         timer.cancel();
         setState(() {
@@ -504,34 +584,34 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
         final backText = _cards[index]["meaning"] ?? "";
 
         if (_readingMode == "앞뒤") {
-          await _flutterTts.setLanguage(_frontLanguage);
+          await _applyTtsVoice(language: _frontLanguage, voice: _frontVoice);
           if (!mounted) return;
           setState(() => _showMeaning = false);
           await _flutterTts.speak(frontText);
           await Future.delayed(const Duration(milliseconds: 500));
 
-          await _flutterTts.setLanguage(_backLanguage);
+          await _applyTtsVoice(language: _backLanguage, voice: _backVoice);
           if (!mounted) return;
           setState(() => _showMeaning = true);
           await _flutterTts.speak(backText);
         } else if (_readingMode == "뒤앞") {
-          await _flutterTts.setLanguage(_backLanguage);
+          await _applyTtsVoice(language: _backLanguage, voice: _backVoice);
           if (!mounted) return;
           setState(() => _showMeaning = true);
           await _flutterTts.speak(backText);
           await Future.delayed(const Duration(milliseconds: 500));
 
-          await _flutterTts.setLanguage(_frontLanguage);
+          await _applyTtsVoice(language: _frontLanguage, voice: _frontVoice);
           if (!mounted) return;
           setState(() => _showMeaning = false);
           await _flutterTts.speak(frontText);
         } else if (_readingMode == "앞면만") {
-          await _flutterTts.setLanguage(_frontLanguage);
+          await _applyTtsVoice(language: _frontLanguage, voice: _frontVoice);
           if (!mounted) return;
           setState(() => _showMeaning = false);
           await _flutterTts.speak(frontText);
         } else if (_readingMode == "뒷면만") {
-          await _flutterTts.setLanguage(_backLanguage);
+          await _applyTtsVoice(language: _backLanguage, voice: _backVoice);
           if (!mounted) return;
           setState(() => _showMeaning = true);
           await _flutterTts.speak(backText);
@@ -542,6 +622,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
 
       await Future.delayed(const Duration(milliseconds: 500));
     }
+    if (!mounted || !_isPlaying) return;
     _playCount++;
 
     if (_currentIndex == _cards.length - 1) {
@@ -573,5 +654,210 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       description: '플래시카드 $_playCount장 학습',
     );
     _playCount = 0;
+  }
+}
+
+class _FlashcardContent extends StatelessWidget {
+  final String text;
+  final String imageUrl;
+  final bool hasImage;
+  final bool isLandscape;
+  final bool isTablet;
+  final double maxFontSize;
+
+  const _FlashcardContent({
+    required this.text,
+    required this.imageUrl,
+    required this.hasImage,
+    required this.isLandscape,
+    required this.isTablet,
+    required this.maxFontSize,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textPane = Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: isLandscape ? 56 : 36,
+        vertical: 24,
+      ),
+      child: _ResponsiveCardText(
+        text: text,
+        maxFontSize: maxFontSize,
+        minFontSize: isLandscape ? 18 : 20,
+      ),
+    );
+
+    if (!hasImage) {
+      return Center(child: textPane);
+    }
+
+    final imagePane = Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: isLandscape ? 36 : 20,
+        vertical: 12,
+      ),
+      child: Center(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: imageUrl.startsWith('http')
+              ? CachedNetworkImage(
+                  imageUrl: imageUrl,
+                  fit: BoxFit.contain,
+                  placeholder: (ctx, _) =>
+                      const Center(child: CircularProgressIndicator()),
+                  errorWidget: (ctx, _, __) =>
+                      const Icon(Icons.broken_image, size: 48),
+                )
+              : Image.file(
+                  File(imageUrl),
+                  fit: BoxFit.contain,
+                  errorBuilder: (ctx, _, __) =>
+                      const Icon(Icons.broken_image, size: 48),
+                ),
+        ),
+      ),
+    );
+
+    if (isLandscape) {
+      return Row(
+        children: [
+          Expanded(flex: isTablet ? 5 : 4, child: imagePane),
+          Expanded(flex: isTablet ? 4 : 5, child: textPane),
+        ],
+      );
+    }
+
+    return Column(
+      children: [
+        Expanded(flex: 4, child: imagePane),
+        Expanded(flex: 5, child: textPane),
+      ],
+    );
+  }
+}
+
+class _ResponsiveCardText extends StatelessWidget {
+  final String text;
+  final double maxFontSize;
+  final double minFontSize;
+
+  const _ResponsiveCardText({
+    required this.text,
+    required this.maxFontSize,
+    required this.minFontSize,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textDirection = Directionality.of(context);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxWidth = constraints.maxWidth;
+        final maxHeight = constraints.maxHeight;
+        final fittedFontSize = _findLargestFittingFontSize(
+          text: text,
+          maxWidth: maxWidth,
+          maxHeight: maxHeight,
+          textDirection: textDirection,
+        );
+        final fitsAtMinimum = _textFits(
+          fontSize: fittedFontSize,
+          maxWidth: maxWidth,
+          maxHeight: maxHeight,
+          textDirection: textDirection,
+        );
+        final content = Text(
+          text,
+          textAlign: TextAlign.center,
+          softWrap: true,
+          style: TextStyle(
+            fontSize: fittedFontSize,
+            height: 1.18,
+            letterSpacing: 0,
+          ),
+        );
+
+        if (fitsAtMinimum) {
+          return Center(child: content);
+        }
+
+        return Center(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: content,
+          ),
+        );
+      },
+    );
+  }
+
+  double _findLargestFittingFontSize({
+    required String text,
+    required double maxWidth,
+    required double maxHeight,
+    required TextDirection textDirection,
+  }) {
+    var low = minFontSize;
+    var high = maxFontSize;
+
+    for (var i = 0; i < 10; i++) {
+      final mid = (low + high) / 2;
+      if (_textFits(
+        fontSize: mid,
+        maxWidth: maxWidth,
+        maxHeight: maxHeight,
+        textDirection: textDirection,
+      )) {
+        low = mid;
+      } else {
+        high = mid;
+      }
+    }
+
+    return low.clamp(minFontSize, maxFontSize);
+  }
+
+  bool _textFits({
+    required double fontSize,
+    required double maxWidth,
+    required double maxHeight,
+    required TextDirection textDirection,
+  }) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(fontSize: fontSize, height: 1.18),
+      ),
+      textAlign: TextAlign.center,
+      textDirection: textDirection,
+    )..layout(maxWidth: maxWidth);
+
+    return painter.width <= maxWidth && painter.height <= maxHeight;
+  }
+}
+
+class _NavButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onPressed;
+
+  const _NavButton({
+    required this.icon,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Theme.of(context).colorScheme.surface.withAlpha(210),
+      shape: const CircleBorder(),
+      elevation: 1,
+      child: IconButton(
+        icon: Icon(icon),
+        iconSize: 30,
+        onPressed: onPressed,
+      ),
+    );
   }
 }

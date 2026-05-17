@@ -11,6 +11,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   flutter_tts
   rive_common
   share_plus
+  sqlite3_flutter_libs
   url_launcher_windows
 )
 

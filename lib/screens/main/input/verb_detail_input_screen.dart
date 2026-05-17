@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+
+import '../../../src/repos/term_repository.dart';
 
 class CustomField {
   TextEditingController titleController;
@@ -30,17 +33,19 @@ class CustomField {
 }
 
 class VerbDetailInputScreen extends StatefulWidget {
-  final String text;     // 기존 동사 원형 (예: "hablar")
-  final String meaning;  // 동사의 뜻 (예: "말하다")
+  final String? termId;
+  final String text; // 기존 동사 원형 (예: "hablar")
+  final String meaning; // 동사의 뜻 (예: "말하다")
 
   const VerbDetailInputScreen({
     super.key,
+    this.termId,
     this.text = '',
     this.meaning = '',
   });
 
   @override
-  _VerbDetailInputScreenState createState() => _VerbDetailInputScreenState();
+  State<VerbDetailInputScreen> createState() => _VerbDetailInputScreenState();
 }
 
 class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
@@ -53,16 +58,27 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
   final TextEditingController _meaningController = TextEditingController();
   final TextEditingController _subjunctiveController = TextEditingController();
   final TextEditingController _imperativeController = TextEditingController();
-  final TextEditingController _beginnerExampleController = TextEditingController();
-  final TextEditingController _intermediateExampleController = TextEditingController();
-  final TextEditingController _advancedExampleController = TextEditingController();
+  final TextEditingController _beginnerExampleController =
+      TextEditingController();
+  final TextEditingController _intermediateExampleController =
+      TextEditingController();
+  final TextEditingController _advancedExampleController =
+      TextEditingController();
+  final _terms = TermRepository();
 
   // 동적 추가 필드 리스트
   List<CustomField> customFields = [];
 
   // 헬퍼 함수: 동사 변화 맵을 콤마로 구분된 문자열로 변환
   String _mapToCommaSeparatedString(Map<String, dynamic> conjugationMap) {
-    final order = ["yo", "tú", "él/ella/Ud", "nosotros", "vosotros", "ellos/ellas/Uds"];
+    final order = [
+      "yo",
+      "tú",
+      "él/ella/Ud",
+      "nosotros",
+      "vosotros",
+      "ellos/ellas/Uds"
+    ];
     return order.map((key) => conjugationMap[key] ?? "").join(', ');
   }
 
@@ -74,34 +90,56 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
   // 저장 시에는 그대로 저장하거나 나중에 원하는 대로 변경 가능
 
   Future<void> _loadVerbDetails() async {
-    final doc = await FirebaseFirestore.instance.collection('verbs').doc(widget.text).get();
-    if (doc.exists) {
-      final data = doc.data()!;
-      setState(() {
-        _verbController.text = data['text'] ?? widget.text;
-        _meaningController.text = data['meaning'] ?? widget.meaning;
-        _presentController.text = _mapToCommaSeparatedString(data['conjugations']?['present']?['forms'] ?? {});
-        _preteriteController.text = _mapToCommaSeparatedString(data['conjugations']?['preterite']?['forms'] ?? {});
-        _imperfectController.text = _mapToCommaSeparatedString(data['conjugations']?['imperfect']?['forms'] ?? {});
-        _futureController.text = _mapToCommaSeparatedString(data['conjugations']?['future']?['forms'] ?? {});
-        _subjunctiveController.text = _mapToCommaSeparatedString(data['conjugations']?['subjunctive']?['forms'] ?? {});
-        _imperativeController.text = _mapToCommaSeparatedString(data['conjugations']?['imperative']?['forms'] ?? {});
-        _beginnerExampleController.text = data['examples']?['beginner']?['text'] ?? "";
-        _intermediateExampleController.text = data['examples']?['intermediate']?['text'] ?? "";
-        _advancedExampleController.text = data['examples']?['advanced']?['text'] ?? "";
+    if (widget.termId == null) return;
 
-        // customFields 불러오기 (있다면)
-        if (data.containsKey("customFields")) {
-          List<dynamic> customList = data["customFields"];
-          customFields = customList.map((cf) {
-            return CustomField(
-              title: cf["title"] ?? "",
-              front: cf["front"] ?? "",
-              back: cf["back"] ?? "",
-            );
-          }).toList();
-        }
-      });
+    final term = await _terms.getTerm(widget.termId!);
+    if (term == null) return;
+
+    final data = _decodeVerbNote(term.note);
+    if (!mounted) return;
+    setState(() {
+      _verbController.text = term.frontText;
+      _meaningController.text = term.backText;
+      _presentController.text = _mapToCommaSeparatedString(
+          data['conjugations']?['present']?['forms'] ?? {});
+      _preteriteController.text = _mapToCommaSeparatedString(
+          data['conjugations']?['preterite']?['forms'] ?? {});
+      _imperfectController.text = _mapToCommaSeparatedString(
+          data['conjugations']?['imperfect']?['forms'] ?? {});
+      _futureController.text = _mapToCommaSeparatedString(
+          data['conjugations']?['future']?['forms'] ?? {});
+      _subjunctiveController.text = _mapToCommaSeparatedString(
+          data['conjugations']?['subjunctive']?['forms'] ?? {});
+      _imperativeController.text = _mapToCommaSeparatedString(
+          data['conjugations']?['imperative']?['forms'] ?? {});
+      _beginnerExampleController.text =
+          data['examples']?['beginner']?['text'] ?? "";
+      _intermediateExampleController.text =
+          data['examples']?['intermediate']?['text'] ?? "";
+      _advancedExampleController.text =
+          data['examples']?['advanced']?['text'] ?? "";
+
+      // customFields 불러오기 (있다면)
+      if (data.containsKey("customFields")) {
+        List<dynamic> customList = data["customFields"];
+        customFields = customList.map((cf) {
+          return CustomField(
+            title: cf["title"] ?? "",
+            front: cf["front"] ?? "",
+            back: cf["back"] ?? "",
+          );
+        }).toList();
+      }
+    });
+  }
+
+  Map<String, dynamic> _decodeVerbNote(String note) {
+    if (note.trim().isEmpty) return {};
+    try {
+      final decoded = jsonDecode(note);
+      return decoded is Map<String, dynamic> ? decoded : {};
+    } catch (_) {
+      return {};
     }
   }
 
@@ -170,7 +208,8 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
     };
 
     // customFields 저장: 동적 추가 필드들
-    List<Map<String, String>> customFieldData = customFields.map((cf) => cf.toMap()).toList();
+    List<Map<String, String>> customFieldData =
+        customFields.map((cf) => cf.toMap()).toList();
 
     Map<String, dynamic> data = {
       "text": newText,
@@ -178,21 +217,33 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
       "conjugations": conjugations,
       "examples": examples,
       "customFields": customFieldData, // 추가된 동적 필드들
-      "createdAt": FieldValue.serverTimestamp(),
     };
 
     try {
-      if (newText != widget.text) {
-        await FirebaseFirestore.instance.collection('verbs').doc(newText).set(data);
-        await FirebaseFirestore.instance.collection('verbs').doc(widget.text).delete();
+      final note = jsonEncode(data);
+      if (widget.termId == null) {
+        await _terms.addTerm(
+          type: 'verb',
+          frontText: newText,
+          backText: meaning,
+          note: note,
+        );
       } else {
-        await FirebaseFirestore.instance.collection('verbs').doc(newText).set(data);
+        await _terms.updateTerm(
+          id: widget.termId!,
+          type: 'verb',
+          frontText: newText,
+          backText: meaning,
+          note: note,
+        );
       }
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("동사 정보가 저장되었습니다.")),
       );
-      await _loadVerbDetails();
+      Navigator.pop(context);
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text("저장 실패: $e")),
       );
@@ -208,7 +259,8 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("추가 필드 ${index + 1}", style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text("추가 필드 ${index + 1}",
+                style: const TextStyle(fontWeight: FontWeight.bold)),
             TextField(
               controller: cf.titleController,
               decoration: const InputDecoration(labelText: "필드 제목"),
@@ -268,142 +320,143 @@ class _VerbDetailInputScreenState extends State<VerbDetailInputScreen> {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: () => FocusScope.of(context).unfocus(),
-    child:Scaffold(
-      appBar: AppBar(
-        title: Text("${_verbController.text} 동사 상세 정보"),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.save),
-            tooltip: "저장",
-            onPressed: _saveVerbDetails,
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 기본 필드들
-            TextField(
-              controller: _verbController,
-              decoration: const InputDecoration(
-                labelText: '동사 원형 (예: hablar)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _meaningController,
-              decoration: const InputDecoration(
-                labelText: '뜻 (예: 말하다)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _presentController,
-              decoration: const InputDecoration(
-                labelText: '현재 시제 (예: hablo, hablas, habla, ...)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _preteriteController,
-              decoration: const InputDecoration(
-                labelText: '과거 시제 (예: hablé, hablaste, habló, ...)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _imperfectController,
-              decoration: const InputDecoration(
-                labelText: '불완료 시제 (예: hablaba, hablabas, ...)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _futureController,
-              decoration: const InputDecoration(
-                labelText: '미래 시제 (예: hablaré, hablarás, ...)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _subjunctiveController,
-              decoration: const InputDecoration(
-                labelText: '접속법 (예: hable, hables, ...)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _imperativeController,
-              decoration: const InputDecoration(
-                labelText: '명령법 (예: habla, hable, ...)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _beginnerExampleController,
-              decoration: const InputDecoration(
-                labelText: '초급 예문 (각 줄에 "예문 텍스트 - 예문 뜻" 입력)',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: null,
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _intermediateExampleController,
-              decoration: const InputDecoration(
-                labelText: '중급 예문 (각 줄에 "예문 텍스트 - 예문 뜻" 입력)',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: null,
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _advancedExampleController,
-              decoration: const InputDecoration(
-                labelText: '고급 예문 (각 줄에 "예문 텍스트 - 예문 뜻" 입력)',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: null,
-            ),
-            const SizedBox(height: 20),
-            // 동적 추가 필드 섹션
-            const Text("추가 필드", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-            Column(
-              children: List.generate(customFields.length, (index) {
-                return _buildCustomFieldWidget(index, customFields[index]);
-              }),
-            ),
-            TextButton.icon(
-              onPressed: () {
-                setState(() {
-                  customFields.add(CustomField());
-                });
-              },
-              icon: const Icon(Icons.add),
-              label: const Text("필드 추가"),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton(
+      behavior: HitTestBehavior.translucent,
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text("${_verbController.text} 동사 상세 정보"),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.save),
+              tooltip: "저장",
               onPressed: _saveVerbDetails,
-              child: const Text("저장"),
             ),
           ],
         ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 기본 필드들
+              TextField(
+                controller: _verbController,
+                decoration: const InputDecoration(
+                  labelText: '동사 원형 (예: hablar)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _meaningController,
+                decoration: const InputDecoration(
+                  labelText: '뜻 (예: 말하다)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _presentController,
+                decoration: const InputDecoration(
+                  labelText: '현재 시제 (예: hablo, hablas, habla, ...)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _preteriteController,
+                decoration: const InputDecoration(
+                  labelText: '과거 시제 (예: hablé, hablaste, habló, ...)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _imperfectController,
+                decoration: const InputDecoration(
+                  labelText: '불완료 시제 (예: hablaba, hablabas, ...)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _futureController,
+                decoration: const InputDecoration(
+                  labelText: '미래 시제 (예: hablaré, hablarás, ...)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _subjunctiveController,
+                decoration: const InputDecoration(
+                  labelText: '접속법 (예: hable, hables, ...)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _imperativeController,
+                decoration: const InputDecoration(
+                  labelText: '명령법 (예: habla, hable, ...)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _beginnerExampleController,
+                decoration: const InputDecoration(
+                  labelText: '초급 예문 (각 줄에 "예문 텍스트 - 예문 뜻" 입력)',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: null,
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _intermediateExampleController,
+                decoration: const InputDecoration(
+                  labelText: '중급 예문 (각 줄에 "예문 텍스트 - 예문 뜻" 입력)',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: null,
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _advancedExampleController,
+                decoration: const InputDecoration(
+                  labelText: '고급 예문 (각 줄에 "예문 텍스트 - 예문 뜻" 입력)',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: null,
+              ),
+              const SizedBox(height: 20),
+              // 동적 추가 필드 섹션
+              const Text("추가 필드",
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              Column(
+                children: List.generate(customFields.length, (index) {
+                  return _buildCustomFieldWidget(index, customFields[index]);
+                }),
+              ),
+              TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    customFields.add(CustomField());
+                  });
+                },
+                icon: const Icon(Icons.add),
+                label: const Text("필드 추가"),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: _saveVerbDetails,
+                child: const Text("저장"),
+              ),
+            ],
+          ),
+        ),
       ),
-    ),
     );
   }
 }

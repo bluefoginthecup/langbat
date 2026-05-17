@@ -4,8 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:langbat/models/node_model.dart'; // 공통 Node, NodeType 사용
-import 'list_detail_screen.dart';                // 상세 화면
-import 'make_list_screen.dart';                  // 새 리스트 생성 화면
+import 'list_detail_screen.dart'; // 상세 화면
+import 'make_list_screen.dart'; // 새 리스트 생성 화면
 import 'package:langarden_common/widgets/multi_select_actions.dart'; // 멀티 선택 액션 위젯 (구현된 경우)
 import 'package:langarden_common/utils/trash_manager.dart';
 
@@ -28,7 +28,7 @@ class _FireRefs {
       _db.collection('users').doc(uid).collection(name);
 
   CollectionReference<Map<String, dynamic>> get lists => col('lists');
-  CollectionReference<Map<String, dynamic>> get cart  => col('cart');
+  CollectionReference<Map<String, dynamic>> get cart => col('cart');
   CollectionReference<Map<String, dynamic>> get trash => col('trash');
 }
 
@@ -44,7 +44,7 @@ class _CustomListScreenState extends State<CustomListScreen> {
   final Set<String> selectedIds = {};
 
   late final _FireRefs _refs =
-  _FireRefs(FirebaseFirestore.instance, FirebaseAuth.instance);
+      _FireRefs(FirebaseFirestore.instance, FirebaseAuth.instance);
 
   void toggleMultiSelect() {
     setState(() {
@@ -66,38 +66,11 @@ class _CustomListScreenState extends State<CustomListScreen> {
   }
 
   Future<void> addSelectedToCart() async {
-    try {
-      final batch = FirebaseFirestore.instance.batch();
-
-      for (final docId in selectedIds) {
-        final docSnap = await _refs.lists.doc(docId).get();
-        if (!docSnap.exists) continue;
-
-        final data = docSnap.data() ?? {};
-        batch.set(_refs.cart.doc(docId), {
-          "type": "custom",
-          "originalId": docId,
-          "data": data,
-          "ownerUid": _refs.uid, // 규칙에서 owner 검사 시 대비
-          "addedAt": FieldValue.serverTimestamp(),
-        });
-      }
-
-      await batch.commit();
-      if (!mounted) return;
-      setState(() {
-        selectedIds.clear();
-        multiSelectMode = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("장바구니에 추가되었습니다.")),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("장바구니 추가 실패: $e")),
-      );
-    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('커스텀 리스트 장바구니는 로컬 저장 구조로 전환 중입니다.'),
+      ),
+    );
   }
 
   void _navigateToMakeList(BuildContext context) {
@@ -129,7 +102,6 @@ class _CustomListScreenState extends State<CustomListScreen> {
       );
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -187,7 +159,8 @@ class _CustomListScreenState extends State<CustomListScreen> {
                       type: data['type'] == 'data'
                           ? NodeType.data
                           : NodeType.category,
-                      data: (data['data'] as Map?)?.cast<String, String>() ?? {},
+                      data:
+                          (data['data'] as Map?)?.cast<String, String>() ?? {},
                       children: const [],
                     );
 

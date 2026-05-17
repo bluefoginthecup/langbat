@@ -1,72 +1,39 @@
 // lib/screens/main/my_list/sentence_list_screen.dart
-import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'dart:io';
 
+import 'package:flutter/material.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:uuid/uuid.dart';
+
+import 'package:langbat/src/repos/flashcard_repository.dart';
+import 'package:langbat/src/repos/local_models.dart';
+import 'package:langbat/src/repos/term_repository.dart';
+import 'package:langbat/src/services/app_path_service.dart';
 
 class SentenceListScreen extends StatefulWidget {
   const SentenceListScreen({super.key});
+
   @override
   State<SentenceListScreen> createState() => _SentenceListScreenState();
 }
 
 class _SentenceListScreenState extends State<SentenceListScreen> {
+  final _termRepo = TermRepository();
+  final _flashcardRepo = FlashcardRepository();
+  final _paths = const AppPathService();
   final _selectedIds = <String>{};
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> _lastDocs = [];
-
-  String? _uid;
-  bool _authError = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _ensureSignedIn();
-  }
-
-  Future<void> _ensureSignedIn() async {
-    try {
-      final auth = FirebaseAuth.instance;
-      if (auth.currentUser == null) {
-        await auth.signInAnonymously();
-      }
-      setState(() => _uid = FirebaseAuth.instance.currentUser!.uid);
-    } catch (e) {
-      setState(() => _authError = true);
-    }
-  }
-
-  Stream<QuerySnapshot<Map<String, dynamic>>> _stream() {
-        final uid = _uid!;
-        return FirebaseFirestore.instance
-            .collection('users')
-            .doc(uid)
-            .collection('sentences')
-            .orderBy('createdAt', descending: true)
-            .snapshots();
-      }
+  List<LocalTerm> _lastTerms = [];
 
   bool get _selectionMode => _selectedIds.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
-    if (_authError) {
-      return const Scaffold(
-        body: Center(child: Text('로그인에 실패했어요. 네트워크 상태를 확인해 주세요.')),
-      );
-    }
-    if (_uid == null) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
     return Scaffold(
       appBar: AppBar(
         title:
-        Text(_selectionMode ? '문장 선택됨 ${_selectedIds.length}개' : '문장리스트'),
+            Text(_selectionMode ? '문장 선택됨 ${_selectedIds.length}개' : '문장리스트'),
         actions: [
           if (_selectionMode) ...[
             IconButton(
@@ -88,72 +55,70 @@ class _SentenceListScreenState extends State<SentenceListScreen> {
           ],
         ],
       ),
-      body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-        stream: _stream(),
+      body: StreamBuilder<List<LocalTerm>>(
+        stream: _termRepo.watchTerms(type: 'sentence'),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
           if (snap.hasError) {
-            debugPrint("🔥 SentenceListScreen stream error: ${snap.error}");
-            debugPrint("Stack trace: ${snap.stackTrace}");
-
             return Center(child: Text('오류: ${snap.error}'));
           }
-          final docs = snap.data?.docs ?? [];
-          _lastDocs = docs;
-          if (docs.isEmpty) {
+
+          final terms = snap.data ?? const <LocalTerm>[];
+          _lastTerms = terms;
+          if (terms.isEmpty) {
             return const _EmptyHint();
           }
 
           return ListView.separated(
-            itemCount: docs.length,
+            itemCount: terms.length,
             separatorBuilder: (_, __) => const Divider(height: 1),
             itemBuilder: (context, i) {
-              final doc = docs[i];
-              final d = doc.data();
-              final sentence = (d['sentence'] ?? '') as String;
-              final meaning = (d['meaning'] ?? '') as String;
-              final imageUrl = (d['imageUrl'] ?? '') as String;
-              final selected = _selectedIds.contains(doc.id);
+              final term = terms[i];
+              final selected = _selectedIds.contains(term.id);
 
-              return ListTile(
-                leading: imageUrl.isEmpty
-                    ? const Icon(Icons.chat_bubble_outline)
-                    : ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: Image.network(
-                    imageUrl,
-                    width: 48,
-                    height: 48,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                title: Text(
-                  sentence,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                subtitle: meaning.isEmpty
-                    ? null
-                    : Text(
-                  meaning,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: _selectionMode
-                    ? Checkbox(
-                  value: selected,
-                  onChanged: (_) => _toggleSelect(doc.id),
-                )
-                    : null,
-                onLongPress: () => _toggleSelect(doc.id),
-                onTap: () {
-                  if (_selectionMode) {
-                    _toggleSelect(doc.id);
-                  } else {
-                    // TODO: 상세 보기/편집
-                  }
+              return FutureBuilder<File?>(
+                future: _imageFile(term.imagePath),
+                builder: (context, imageSnap) {
+                  final file = imageSnap.data;
+                  return ListTile(
+                    leading: file == null
+                        ? const Icon(Icons.chat_bubble_outline)
+                        : ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: Image.file(
+                              file,
+                              width: 48,
+                              height: 48,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                    title: Text(
+                      term.frontText,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: term.backText.isEmpty
+                        ? null
+                        : Text(
+                            term.backText,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                    trailing: _selectionMode
+                        ? Checkbox(
+                            value: selected,
+                            onChanged: (_) => _toggleSelect(term.id),
+                          )
+                        : null,
+                    onLongPress: () => _toggleSelect(term.id),
+                    onTap: () {
+                      if (_selectionMode) {
+                        _toggleSelect(term.id);
+                      }
+                    },
+                  );
                 },
               );
             },
@@ -173,6 +138,12 @@ class _SentenceListScreenState extends State<SentenceListScreen> {
     });
   }
 
+  Future<File?> _imageFile(String? imagePath) async {
+    if (imagePath == null || imagePath.isEmpty) return null;
+    final file = await _paths.resolveAppFile(imagePath);
+    return file.existsSync() ? file : null;
+  }
+
   Future<void> _openAddDialog(BuildContext context) async {
     final sentenceCtl = TextEditingController();
     final meaningCtl = TextEditingController();
@@ -180,133 +151,133 @@ class _SentenceListScreenState extends State<SentenceListScreen> {
 
     await showDialog(
       context: context,
-      builder: (_) => StatefulBuilder(builder: (context, setState) {
-        Future<void> save() async {
-          final sentence = sentenceCtl.text.trim();
-          final meaning = meaningCtl.text.trim();
-          if (sentence.isEmpty) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('문장을 입력하세요.')),
-            );
-            return;
-          }
-
-          // 로그인 보장 및 uid 확보
-          await _ensureSignedIn();
-          final uid = _uid!;
-          final col = FirebaseFirestore.instance
-              .collection('users').doc(uid).collection('sentences');
-          final docRef = col.doc();
-
-          String imageUrl = '';
-          try {
-            if (picked != null) {
-              final original = await picked!.readAsBytes();
-
-              // 🔽 긴 변 1600px로 리사이즈 + 품질 75 (jpeg)
-              final compressed = await FlutterImageCompress.compressWithList(
-                original,
-                quality: 75,
-                minWidth: 1600,
-                minHeight: 1066, // 1600 * (2/3) ≈ 1066 (대략 3:2 목표)
-                format: CompressFormat.jpeg,
-              );
-
-              final path = 'users/$uid/sentences/${docRef.id}.jpg';
-              final task = await FirebaseStorage.instance.ref(path).putData(
-                compressed,
-                SettableMetadata(
-                  contentType: 'image/jpeg',
-                  // ✅ 7일 캐시(원하면 1년까지 가능)
-                  cacheControl: 'public, max-age=604800, immutable',
-                ),
-              );
-              imageUrl = await task.ref.getDownloadURL();
-            }
-
-            await docRef.set({
-              'sentence': sentence,
-              'meaning': meaning,
-              'imageUrl': imageUrl,
-              'createdAt': FieldValue.serverTimestamp(),
-            });
-
-          if (context.mounted) {
-              Navigator.pop(context);
+      builder: (_) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> save() async {
+            final sentence = sentenceCtl.text.trim();
+            final meaning = meaningCtl.text.trim();
+            if (sentence.isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('추가되었습니다.')),
+                const SnackBar(content: Text('문장을 입력하세요.')),
+              );
+              return;
+            }
+
+            try {
+              final termId = const Uuid().v4();
+              final imagePath = picked == null
+                  ? null
+                  : await _copyPickedImage(termId: termId, picked: picked!);
+
+              await _termRepo.addTerm(
+                id: termId,
+                type: 'sentence',
+                frontText: sentence,
+                backText: meaning,
+                imagePath: imagePath,
+              );
+
+              if (context.mounted) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('추가되었습니다.')),
+                );
+              }
+            } catch (e) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('저장 실패: $e')),
               );
             }
-          } catch (e) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('저장 실패: $e')),
-            );
           }
-        }
 
-        return AlertDialog(
-          title: const Text('문장 추가'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: sentenceCtl,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    labelText: '문장',
-                    hintText: '예) I need a nap.',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: meaningCtl,
-                  decoration: const InputDecoration(
-                    labelText: '뜻 (선택)',
-                    hintText: '예) 나 낮잠 필요해.',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: () async {
-                        final x = await ImagePicker().pickImage(
-                          source: ImageSource.gallery,
-                          maxWidth: 2000,
-                        );
-                        if (x != null) setState(() => picked = x);
-                      },
-                      icon: const Icon(Icons.image),
-                      label: const Text('이미지 선택'),
+          return AlertDialog(
+            title: const Text('문장 추가'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: sentenceCtl,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      labelText: '문장',
+                      hintText: '예) I need a nap.',
                     ),
-                    const SizedBox(width: 12),
-                    if (picked != null)
-                      Expanded(
-                        child: Text(
-                          picked!.name,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: meaningCtl,
+                    decoration: const InputDecoration(
+                      labelText: '뜻 (선택)',
+                      hintText: '예) 나 낮잠 필요해.',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          final x = await ImagePicker().pickImage(
+                            source: ImageSource.gallery,
+                            maxWidth: 2000,
+                          );
+                          if (x != null) setDialogState(() => picked = x);
+                        },
+                        icon: const Icon(Icons.image),
+                        label: const Text('이미지 선택'),
                       ),
-                  ],
-                ),
-              ],
+                      const SizedBox(width: 12),
+                      if (picked != null)
+                        Expanded(
+                          child: Text(
+                            picked!.name,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('취소'),
-            ),
-            ElevatedButton.icon(
-              onPressed: save,
-              icon: const Icon(Icons.save),
-              label: const Text('저장'),
-            ),
-          ],
-        );
-      }),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('취소'),
+              ),
+              ElevatedButton.icon(
+                onPressed: save,
+                icon: const Icon(Icons.save),
+                label: const Text('저장'),
+              ),
+            ],
+          );
+        },
+      ),
     );
+  }
+
+  Future<String> _copyPickedImage({
+    required String termId,
+    required XFile picked,
+  }) async {
+    final original = await picked.readAsBytes();
+    final compressed = await FlutterImageCompress.compressWithList(
+      original,
+      quality: 75,
+      minWidth: 1600,
+      minHeight: 1066,
+      format: CompressFormat.jpeg,
+    );
+
+    final root = await _paths.termImagesRoot();
+    final dir = Directory(p.join(root.path, termId));
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+
+    final file = File(p.join(dir.path, 'front.jpg'));
+    await file.writeAsBytes(compressed, flush: true);
+    return _paths.normalizeToRelativePath(file.path);
   }
 
   Future<void> _createFlashcardSetFromSelection() async {
@@ -326,99 +297,43 @@ class _SentenceListScreenState extends State<SentenceListScreen> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('취소')),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: const Text('만들기')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('취소'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('만들기'),
+          ),
         ],
       ),
     );
     if (ok != true) return;
 
     try {
-      await _ensureSignedIn();
-      final uid = _uid!;
-      final fs = FirebaseFirestore.instance;
+      final orderedIds = _lastTerms
+          .where((term) => _selectedIds.contains(term.id))
+          .map((term) => term.id)
+          .toList(growable: false);
 
-      // ✅ 사용자 네임스페이스에 세트 생성
-      final setRef = fs
-          .collection('users')
-          .doc(uid)
-          .collection('flashcard_sets')
-          .doc();
-
-      final title = titleCtl.text.trim().isEmpty ? '새 세트' : titleCtl.text.trim();
-
-      debugPrint('[CreateSet] writing set ${setRef.id}');
-      await setRef.set({
-        'uid': uid,
-        'name': title,
-        'createdAt': FieldValue.serverTimestamp(),
-        'size': _selectedIds.length,
-      });
-
-      // ✅ items도 같은 네임스페이스 하위에 저장
-      WriteBatch batch = fs.batch();
-      int order = 0;
-      int ops = 0;
-
-      for (final doc in _lastDocs) {
-        if (!_selectedIds.contains(doc.id)) continue;
-
-        final d = doc.data() as Map<String, dynamic>;
-        final sentence = (d['sentence'] ?? '') as String;
-        final meaning = (d['meaning'] ?? '') as String;
-        final imageUrl = (d['imageUrl'] ?? '') as String;
-
-        final itemRef = setRef.collection('items').doc();
-        batch.set(itemRef, {
-          'addedAt': FieldValue.serverTimestamp(),
-          'order': order,
-          'content': {
-            'text': sentence,
-            'meaning': meaning,
-            'order': order,
-            'type': 'custom',
-            if (imageUrl.isNotEmpty) 'imageFrontUrl': imageUrl,
-          },
-          'sourceSentenceId': doc.id,
-        });
-        order++;
-        ops++;
-
-        if (ops == 450) {
-          debugPrint('[CreateSet] committing partial batch...');
-          await batch.commit();
-          batch = fs.batch();
-          ops = 0;
-        }
-      }
-
-      if (ops > 0) {
-        debugPrint('[CreateSet] committing final batch...');
-        await batch.commit();
-      }
+      await _flashcardRepo.createSetFromTerms(
+        title: titleCtl.text.trim().isEmpty ? '새 세트' : titleCtl.text.trim(),
+        termIds: orderedIds,
+      );
 
       if (!mounted) return;
       setState(_selectedIds.clear);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('플래시카드 세트가 생성되었습니다.')),
       );
-    } on FirebaseException catch (e, st) {
-      debugPrint('🔥 set/items 생성 실패: ${e.code} ${e.message}\n$st');
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('세트 생성 실패: ${e.code}')),
-      );
-    } catch (e, st) {
-      debugPrint('🔥 set/items 생성 실패(기타): $e\n$st');
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('세트 생성 실패(알 수 없는 오류)')),
+        SnackBar(content: Text('세트 생성 실패: $e')),
       );
     }
   }
-
-
 }
 
-// 파일 바깥(하단)에 둡니다.
 class _EmptyHint extends StatelessWidget {
   const _EmptyHint();
 
