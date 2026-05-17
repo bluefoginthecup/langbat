@@ -30,6 +30,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
   bool _isPlaying = false;
   bool _isPaused = false;
   final FlutterTts _flutterTts = FlutterTts();
+  bool get _ttsEnabled => !Platform.isMacOS;
   String _frontLanguage = "es-ES";
   String _backLanguage = "ko-KR";
   List<Map<String, String>> _availableVoices = [];
@@ -45,6 +46,10 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
   void initState() {
     super.initState();
     _cards = List.from(widget.flashcards);
+    if (!_ttsEnabled) {
+      _initializeTTSSettings();
+      return;
+    }
     _flutterTts.setSpeechRate(_ttsSpeed);
     _flutterTts.setVolume(1.0);
     _flutterTts.setPitch(1.0);
@@ -97,8 +102,10 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     _isPlaying = false;
     _isPaused = false;
     _stopCountdown();
-    await _flutterTts.stop();
-    await AudioService.pause();
+    if (_ttsEnabled) {
+      await _flutterTts.stop();
+      await AudioService.pause();
+    }
   }
 
   @override
@@ -106,7 +113,9 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     _isPlaying = false;
     _isPaused = false;
     _stopCountdown();
-    _flutterTts.stop();
+    if (_ttsEnabled) {
+      _flutterTts.stop();
+    }
     super.dispose();
   }
 
@@ -232,6 +241,12 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
 
   void _startTTS() async {
     if (_cards.isEmpty) return;
+    if (!_ttsEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("macOS에서는 현재 음성 재생을 비활성화했습니다.")),
+      );
+      return;
+    }
 
     setState(() {
       _isPlaying = true;
@@ -272,7 +287,9 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       _isPaused = true;
       _isPlaying = false;
     });
-    _flutterTts.stop();
+    if (_ttsEnabled) {
+      _flutterTts.stop();
+    }
   }
 
   void _resumeTTS() {
@@ -314,10 +331,13 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       _ttsSpeed = prefs.getDouble('ttsSpeed') ?? _ttsSpeed;
     });
 
-    _flutterTts.setSpeechRate(_ttsSpeed);
+    if (_ttsEnabled) {
+      _flutterTts.setSpeechRate(_ttsSpeed);
+    }
   }
 
   Future<void> _loadAvailableVoices() async {
+    if (!_ttsEnabled) return;
     try {
       final voices = await _flutterTts.getVoices;
       if (voices is! List) return;
@@ -407,6 +427,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     required String language,
     required Map<String, String>? voice,
   }) async {
+    if (!_ttsEnabled) return;
     if (_voiceMatchesLanguage(voice, language)) {
       await _flutterTts.setVoice(voice!);
     } else {
@@ -421,7 +442,9 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
 
   void _changeSpeed(double speed) {
     setState(() => _ttsSpeed = speed);
-    _flutterTts.setSpeechRate(speed);
+    if (_ttsEnabled) {
+      _flutterTts.setSpeechRate(speed);
+    }
     saveTTSSettingsLocally();
   }
 
@@ -447,7 +470,9 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       if (_isPlaying || _isPaused) {
         _isPlaying = false;
         _isPaused = false;
-        _flutterTts.stop();
+        if (_ttsEnabled) {
+          _flutterTts.stop();
+        }
         _stopCountdown();
         _remainingTime = null;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -532,6 +557,12 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
   }
 
   void _toggleTTS() {
+    if (!_ttsEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("macOS에서는 현재 음성 재생을 비활성화했습니다.")),
+      );
+      return;
+    }
     if (_isPlaying) {
       AudioService.pause();
       _pauseTTS();

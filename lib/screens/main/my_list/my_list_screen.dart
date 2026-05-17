@@ -1,5 +1,6 @@
 // lib/screens/main/my_list/my_list_screen.dart
 import 'package:flutter/material.dart';
+import 'package:langbat/features/photo_flashcards/presentation/photo_deck_list_screen.dart';
 import 'package:langbat/screens/main/my_list/custom_list_screen.dart';
 import 'package:langbat/src/services/auth_service.dart';
 import 'package:langbat/src/services/cloud_backup_service.dart';
@@ -95,6 +96,13 @@ class MyListScreen extends StatelessWidget {
               onPressed: () =>
                   _navigateTo(context, const FlashcardSetListScreen()),
               child: const Text("플래시카드 세트"),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () =>
+                  _navigateTo(context, const PhotoDeckListScreen()),
+              icon: const Icon(Icons.photo_library_outlined),
+              label: const Text("사진 플래시카드"),
             ),
             const SizedBox(height: 16),
             ElevatedButton(
