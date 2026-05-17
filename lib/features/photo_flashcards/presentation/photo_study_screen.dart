@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:langbat/features/photo_flashcards/data/photo_flashcard_models.dart';
 import 'package:langbat/features/photo_flashcards/presentation/widgets/photo_card_image.dart';
@@ -25,6 +26,16 @@ class _PhotoStudyScreenState extends State<PhotoStudyScreen> {
   int _cardIndex = 0;
   int _stage = 0;
   bool _speaking = false;
+  bool _autoPlay = false;
+  bool _shuffleEnabled = false;
+  String _readingMode = '앞뒤';
+  int _repeatCount = 1;
+  double _ttsSpeed = 0.48;
+  String _frontLanguage = 'es-ES';
+  String _backLanguage = 'ko-KR';
+  Map<String, String>? _frontVoice;
+  Map<String, String>? _backVoice;
+  List<Map<String, String>> _availableVoices = [];
   bool get _ttsEnabled => !Platform.isMacOS;
 
   PhotoFlashcard get _card => widget.cards[_cardIndex];
@@ -32,14 +43,24 @@ class _PhotoStudyScreenState extends State<PhotoStudyScreen> {
   @override
   void initState() {
     super.initState();
-    _configureTts();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _speakSpanish());
+    _initializeTtsAndStart();
+  }
+
+  Future<void> _initializeTtsAndStart() async {
+    await _configureTts();
+    if (!mounted) return;
+    if (_autoPlay) {
+      await _runAutoPlay();
+    } else {
+      await _speakSpanish();
+    }
   }
 
   Future<void> _configureTts() async {
+    await _loadTtsSettings();
     if (!_ttsEnabled) return;
-    await _tts.setLanguage('es-ES');
-    await _tts.setSpeechRate(0.48);
+    await _tts.setLanguage(_frontLanguage);
+    await _tts.setSpeechRate(_ttsSpeed);
     await _tts.setVolume(1.0);
     await _tts.setPitch(1.0);
     await _tts.awaitSpeakCompletion(true);
@@ -47,10 +68,12 @@ class _PhotoStudyScreenState extends State<PhotoStudyScreen> {
       IosTextToSpeechAudioCategory.playback,
       [IosTextToSpeechAudioCategoryOptions.mixWithOthers],
     );
+    await _loadAvailableVoices();
   }
 
   @override
   void dispose() {
+    _autoPlay = false;
     if (_ttsEnabled) {
       _tts.stop();
     }
@@ -58,22 +81,53 @@ class _PhotoStudyScreenState extends State<PhotoStudyScreen> {
   }
 
   Future<void> _speakSpanish() async {
+    await _speak(
+      text: _card.spanishText,
+      language: _frontLanguage,
+      voice: _frontVoice,
+    );
+  }
+
+  Future<void> _speakKorean() async {
+    await _speak(
+      text: _card.koreanText,
+      language: _backLanguage,
+      voice: _backVoice,
+    );
+  }
+
+  Future<void> _speak({
+    required String text,
+    required String language,
+    required Map<String, String>? voice,
+  }) async {
     if (!_ttsEnabled) return;
-    final text = _card.spanishText.trim();
-    if (text.isEmpty || _speaking) return;
+    final spoken = text.trim();
+    if (spoken.isEmpty || _speaking) return;
     setState(() => _speaking = true);
     try {
-      await _tts.setLanguage('es-ES');
-      await _tts.speak(text);
+      await _applyTtsVoice(language: language, voice: voice);
+      await _tts.setSpeechRate(_ttsSpeed);
+      for (var i = 0; i < _repeatCount; i += 1) {
+        if (!mounted) return;
+        await _tts.speak(spoken);
+        if (i < _repeatCount - 1) {
+          await Future.delayed(const Duration(milliseconds: 350));
+        }
+      }
     } finally {
       if (mounted) setState(() => _speaking = false);
     }
   }
 
-  void _advance() {
+  Future<void> _advance() async {
     if (_stage < 2) {
       setState(() => _stage += 1);
-      if (_stage == 1) _speakSpanish();
+      if (_stage == 1) {
+        await _speakSpanish();
+      } else if (_stage == 2) {
+        await _speakKorean();
+      }
       return;
     }
     _nextCard();
@@ -100,6 +154,495 @@ class _PhotoStudyScreenState extends State<PhotoStudyScreen> {
     _speakSpanish();
   }
 
+  Future<void> _replayCurrentStage() async {
+    if (_stage == 2) {
+      await _speakKorean();
+    } else {
+      await _speakSpanish();
+    }
+  }
+
+  Future<void> _toggleAutoPlay() async {
+    if (!_ttsEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('macOS에서는 현재 음성 재생을 비활성화했습니다.')),
+      );
+      return;
+    }
+    setState(() => _autoPlay = !_autoPlay);
+    await _saveTtsSettings();
+    if (_autoPlay) {
+      await _runAutoPlay();
+    } else {
+      await _tts.stop();
+    }
+  }
+
+  Future<void> _runAutoPlay() async {
+    while (mounted && _autoPlay) {
+      setState(() => _stage = 0);
+      await _playCurrentCardSequence();
+      if (!mounted || !_autoPlay) return;
+      if (_cardIndex >= widget.cards.length - 1) {
+        setState(() => _autoPlay = false);
+        return;
+      }
+      setState(() {
+        _cardIndex += 1;
+        _stage = 0;
+      });
+      await Future.delayed(const Duration(milliseconds: 450));
+    }
+  }
+
+  Future<void> _playCurrentCardSequence() async {
+    final mode = _readingMode;
+    if (mode == '앞뒤' || mode == '앞면만') {
+      await _speakSpanish();
+      if (!mounted || !_autoPlay) return;
+    }
+
+    setState(() => _stage = 1);
+    if (mode == '앞뒤') {
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+
+    if (mode == '뒤앞') {
+      await _speakKorean();
+      if (!mounted || !_autoPlay) return;
+      setState(() => _stage = 2);
+      await Future.delayed(const Duration(milliseconds: 500));
+      setState(() => _stage = 1);
+      await _speakSpanish();
+      return;
+    }
+
+    if (mode == '뒷면만') {
+      setState(() => _stage = 2);
+      await _speakKorean();
+      return;
+    }
+
+    if (mode == '앞뒤') {
+      setState(() => _stage = 2);
+      await _speakKorean();
+    }
+  }
+
+  Future<void> _loadTtsSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _readingMode = prefs.getString('photoTtsReadingMode') ??
+          prefs.getString('readingMode') ??
+          _readingMode;
+      _repeatCount = prefs.getInt('photoTtsRepeatCount') ??
+          prefs.getInt('repeatCount') ??
+          _repeatCount;
+      _shuffleEnabled = prefs.getBool('photoTtsShuffleEnabled') ??
+          prefs.getBool('shuffleEnabled') ??
+          _shuffleEnabled;
+      _ttsSpeed = prefs.getDouble('photoTtsSpeed') ??
+          prefs.getDouble('ttsSpeed') ??
+          _ttsSpeed;
+      _frontLanguage = prefs.getString('photoTtsFrontLanguage') ??
+          prefs.getString('frontLanguage') ??
+          _frontLanguage;
+      _backLanguage = prefs.getString('photoTtsBackLanguage') ??
+          prefs.getString('backLanguage') ??
+          _backLanguage;
+      _autoPlay = prefs.getBool('photoTtsAutoPlay') ?? _autoPlay;
+    });
+  }
+
+  Future<void> _saveTtsSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('photoTtsReadingMode', _readingMode);
+    await prefs.setInt('photoTtsRepeatCount', _repeatCount);
+    await prefs.setBool('photoTtsShuffleEnabled', _shuffleEnabled);
+    await prefs.setDouble('photoTtsSpeed', _ttsSpeed);
+    await prefs.setString('photoTtsFrontLanguage', _frontLanguage);
+    await prefs.setString('photoTtsBackLanguage', _backLanguage);
+    await prefs.setString('photoTtsFrontVoiceName', _frontVoice?['name'] ?? '');
+    await prefs.setString(
+        'photoTtsFrontVoiceLocale', _frontVoice?['locale'] ?? '');
+    await prefs.setString('photoTtsBackVoiceName', _backVoice?['name'] ?? '');
+    await prefs.setString(
+        'photoTtsBackVoiceLocale', _backVoice?['locale'] ?? '');
+    await prefs.setBool('photoTtsAutoPlay', _autoPlay);
+  }
+
+  Future<void> _loadAvailableVoices() async {
+    if (!_ttsEnabled) return;
+    try {
+      final voices = await _tts.getVoices;
+      if (voices is! List) return;
+
+      final normalizedVoices = <Map<String, String>>[];
+      final seen = <String>{};
+      for (final rawVoice in voices) {
+        if (rawVoice is! Map) continue;
+        final name = rawVoice['name']?.toString() ?? '';
+        final locale =
+            (rawVoice['locale'] ?? rawVoice['language'])?.toString() ?? '';
+        if (name.isEmpty || locale.isEmpty) continue;
+        if (seen.add('$name|$locale')) {
+          normalizedVoices.add({'name': name, 'locale': locale});
+        }
+      }
+      normalizedVoices.sort((a, b) {
+        final localeCompare = (a['locale'] ?? '').compareTo(b['locale'] ?? '');
+        return localeCompare == 0
+            ? (a['name'] ?? '').compareTo(b['name'] ?? '')
+            : localeCompare;
+      });
+
+      final prefs = await SharedPreferences.getInstance();
+      final frontVoice = _findStoredVoice(
+        normalizedVoices,
+        prefs.getString('photoTtsFrontVoiceName') ??
+            prefs.getString('frontVoiceName'),
+        prefs.getString('photoTtsFrontVoiceLocale') ??
+            prefs.getString('frontVoiceLocale'),
+      );
+      final backVoice = _findStoredVoice(
+        normalizedVoices,
+        prefs.getString('photoTtsBackVoiceName') ??
+            prefs.getString('backVoiceName'),
+        prefs.getString('photoTtsBackVoiceLocale') ??
+            prefs.getString('backVoiceLocale'),
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _availableVoices = normalizedVoices;
+        _frontVoice = _voiceMatchesLanguage(frontVoice, _frontLanguage)
+            ? frontVoice
+            : null;
+        _backVoice =
+            _voiceMatchesLanguage(backVoice, _backLanguage) ? backVoice : null;
+      });
+    } catch (e) {
+      debugPrint('Failed to load photo TTS voices: $e');
+    }
+  }
+
+  Map<String, String>? _findStoredVoice(
+    List<Map<String, String>> voices,
+    String? name,
+    String? locale,
+  ) {
+    if (name == null || name.isEmpty || locale == null || locale.isEmpty) {
+      return null;
+    }
+    for (final voice in voices) {
+      if (voice['name'] == name && voice['locale'] == locale) return voice;
+    }
+    return null;
+  }
+
+  bool _voiceMatchesLanguage(Map<String, String>? voice, String language) {
+    if (voice == null) return false;
+    final locale = voice['locale'] ?? '';
+    final prefix = language.split('-').first;
+    return locale == language ||
+        locale.startsWith('$prefix-') ||
+        locale.startsWith('${prefix}_');
+  }
+
+  Future<void> _applyTtsVoice({
+    required String language,
+    required Map<String, String>? voice,
+  }) async {
+    if (_voiceMatchesLanguage(voice, language)) {
+      await _tts.setVoice(voice!);
+    } else {
+      await _tts.setLanguage(language);
+    }
+  }
+
+  void _shuffleCardsIfNeeded(bool enabled) {
+    setState(() {
+      _shuffleEnabled = enabled;
+      if (enabled) {
+        widget.cards.shuffle();
+        _cardIndex = 0;
+        _stage = 0;
+      }
+    });
+    _saveTtsSettings();
+  }
+
+  List<Map<String, String>> _voicesForLanguage(String language) {
+    final voices = _availableVoices
+        .where((voice) => _voiceMatchesLanguage(voice, language))
+        .toList();
+    voices.sort((a, b) {
+      final localeCompare = (a['locale'] ?? '').compareTo(b['locale'] ?? '');
+      return localeCompare == 0
+          ? (a['name'] ?? '').compareTo(b['name'] ?? '')
+          : localeCompare;
+    });
+    return voices;
+  }
+
+  String _voiceLabel(Map<String, String> voice) {
+    final name = voice['name'] ?? 'Unknown';
+    final locale = voice['locale'] ?? '';
+    return locale.isEmpty ? name : '$name ($locale)';
+  }
+
+  Map<String, String>? _matchingVoice(
+    Map<String, String>? selected,
+    List<Map<String, String>> voices,
+  ) {
+    if (selected == null) return null;
+    for (final voice in voices) {
+      if (voice['name'] == selected['name'] &&
+          voice['locale'] == selected['locale']) {
+        return voice;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _showTtsSettingsSheet() async {
+    final languages = {
+      'Spanish': 'es-ES',
+      'Korean': 'ko-KR',
+      'English': 'en-US',
+      'French': 'fr-FR',
+      'German': 'de-DE',
+    };
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            void refresh(VoidCallback update) {
+              setState(update);
+              setSheetState(() {});
+              _saveTtsSettings();
+            }
+
+            final frontVoices = _voicesForLanguage(_frontLanguage);
+            final backVoices = _voicesForLanguage(_backLanguage);
+            final frontVoiceValue = _matchingVoice(_frontVoice, frontVoices);
+            final backVoiceValue = _matchingVoice(_backVoice, backVoices);
+
+            return SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'TTS 설정',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('자동 재생'),
+                        value: _autoPlay,
+                        onChanged: !_ttsEnabled
+                            ? null
+                            : (value) {
+                                Navigator.pop(context);
+                                _toggleAutoPlay();
+                              },
+                      ),
+                      DropdownButtonFormField<String>(
+                        value: _readingMode,
+                        decoration: const InputDecoration(labelText: '읽기 모드'),
+                        items: ['앞뒤', '뒤앞', '앞면만', '뒷면만']
+                            .map((value) => DropdownMenuItem<String>(
+                                  value: value,
+                                  child: Text(value),
+                                ))
+                            .toList(),
+                        onChanged: (value) {
+                          if (value == null) return;
+                          refresh(() => _readingMode = value);
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          const Expanded(child: Text('TTS 속도')),
+                          IconButton(
+                            icon: const Icon(Icons.remove),
+                            onPressed: _ttsSpeed <= 0.3
+                                ? null
+                                : () {
+                                    final next =
+                                        (_ttsSpeed - 0.1).clamp(0.3, 1.0);
+                                    refresh(() => _ttsSpeed = next);
+                                    if (_ttsEnabled) {
+                                      _tts.setSpeechRate(next);
+                                    }
+                                  },
+                          ),
+                          Text('${_ttsSpeed.toStringAsFixed(1)}x'),
+                          IconButton(
+                            icon: const Icon(Icons.add),
+                            onPressed: _ttsSpeed >= 1.0
+                                ? null
+                                : () {
+                                    final next =
+                                        (_ttsSpeed + 0.1).clamp(0.3, 1.0);
+                                    refresh(() => _ttsSpeed = next);
+                                    if (_ttsEnabled) {
+                                      _tts.setSpeechRate(next);
+                                    }
+                                  },
+                          ),
+                        ],
+                      ),
+                      DropdownButtonFormField<int>(
+                        value: _repeatCount,
+                        decoration: const InputDecoration(labelText: '반복 횟수'),
+                        items: List.generate(10, (index) => index + 1)
+                            .map((value) => DropdownMenuItem<int>(
+                                  value: value,
+                                  child: Text('$value회'),
+                                ))
+                            .toList(),
+                        onChanged: (value) {
+                          if (value == null) return;
+                          refresh(() => _repeatCount = value);
+                        },
+                      ),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('셔플'),
+                        value: _shuffleEnabled,
+                        onChanged: _shuffleCardsIfNeeded,
+                      ),
+                      const Divider(height: 28),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: _frontLanguage,
+                              decoration:
+                                  const InputDecoration(labelText: '앞면 언어'),
+                              items: languages.entries
+                                  .map((entry) => DropdownMenuItem<String>(
+                                        value: entry.value,
+                                        child: Text(entry.key),
+                                      ))
+                                  .toList(),
+                              onChanged: (value) {
+                                if (value == null) return;
+                                refresh(() {
+                                  _frontLanguage = value;
+                                  _frontVoice = null;
+                                });
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: _backLanguage,
+                              decoration:
+                                  const InputDecoration(labelText: '뒷면 언어'),
+                              items: languages.entries
+                                  .map((entry) => DropdownMenuItem<String>(
+                                        value: entry.value,
+                                        child: Text(entry.key),
+                                      ))
+                                  .toList(),
+                              onChanged: (value) {
+                                if (value == null) return;
+                                refresh(() {
+                                  _backLanguage = value;
+                                  _backVoice = null;
+                                });
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<Map<String, String>?>(
+                        value: frontVoiceValue,
+                        isExpanded: true,
+                        decoration: const InputDecoration(labelText: '스페인어 음성'),
+                        items: [
+                          const DropdownMenuItem<Map<String, String>?>(
+                            value: null,
+                            child: Text('자동'),
+                          ),
+                          ...frontVoices.map(
+                            (voice) => DropdownMenuItem<Map<String, String>?>(
+                              value: voice,
+                              child: Text(
+                                _voiceLabel(voice),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                        ],
+                        onChanged: !_ttsEnabled
+                            ? null
+                            : (value) => refresh(() => _frontVoice = value),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<Map<String, String>?>(
+                        value: backVoiceValue,
+                        isExpanded: true,
+                        decoration: const InputDecoration(labelText: '한국어 음성'),
+                        items: [
+                          const DropdownMenuItem<Map<String, String>?>(
+                            value: null,
+                            child: Text('자동'),
+                          ),
+                          ...backVoices.map(
+                            (voice) => DropdownMenuItem<Map<String, String>?>(
+                              value: voice,
+                              child: Text(
+                                _voiceLabel(voice),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                        ],
+                        onChanged: !_ttsEnabled
+                            ? null
+                            : (value) => refresh(() => _backVoice = value),
+                      ),
+                      if (!_ttsEnabled) ...[
+                        const SizedBox(height: 12),
+                        Text(
+                          'macOS에서는 현재 TTS를 비활성화했습니다. iOS에서는 설정이 적용됩니다.',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final card = _card;
@@ -110,6 +653,11 @@ class _PhotoStudyScreenState extends State<PhotoStudyScreen> {
       appBar: AppBar(
         title: Text(widget.deckTitle),
         actions: [
+          IconButton(
+            tooltip: 'TTS 설정',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: _showTtsSettingsSheet,
+          ),
           Center(
             child: Padding(
               padding: const EdgeInsets.only(right: 16),
@@ -167,9 +715,18 @@ class _PhotoStudyScreenState extends State<PhotoStudyScreen> {
                   ),
                   const SizedBox(width: 8),
                   IconButton.filledTonal(
-                    tooltip: '다시 듣기',
-                    onPressed: !_ttsEnabled || _speaking ? null : _speakSpanish,
+                    tooltip: _stage == 2 ? '한국어 다시 듣기' : '스페인어 다시 듣기',
+                    onPressed:
+                        !_ttsEnabled || _speaking ? null : _replayCurrentStage,
                     icon: Icon(_speaking ? Icons.volume_up : Icons.hearing),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton.filledTonal(
+                    tooltip: _autoPlay ? '자동 재생 정지' : '자동 재생',
+                    onPressed: _toggleAutoPlay,
+                    icon: Icon(
+                      _autoPlay ? Icons.pause : Icons.play_arrow,
+                    ),
                   ),
                   const Spacer(),
                   FilledButton.icon(
