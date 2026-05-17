@@ -2,10 +2,15 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:langbat/features/photo_flashcards/data/eleven_labs_tts_service.dart';
 import 'package:langbat/features/photo_flashcards/data/photo_flashcard_models.dart';
+import 'package:langbat/features/photo_flashcards/data/photo_flashcard_repository.dart';
 import 'package:langbat/features/photo_flashcards/presentation/widgets/photo_card_image.dart';
+
+enum _TtsSide { front, back }
 
 class PhotoStudyScreen extends StatefulWidget {
   const PhotoStudyScreen({
@@ -23,16 +28,25 @@ class PhotoStudyScreen extends StatefulWidget {
 
 class _PhotoStudyScreenState extends State<PhotoStudyScreen> {
   final _tts = FlutterTts();
+  final _audioPlayer = AudioPlayer();
+  final _repo = PhotoFlashcardRepository();
+  final _elevenLabs = const ElevenLabsTtsService();
   int _cardIndex = 0;
   int _stage = 0;
   bool _speaking = false;
+  bool _generatingAudio = false;
   bool _autoPlay = false;
   bool _shuffleEnabled = false;
+  bool _useElevenLabs = false;
   String _readingMode = '앞뒤';
   int _repeatCount = 1;
   double _ttsSpeed = 0.48;
   String _frontLanguage = 'es-ES';
   String _backLanguage = 'ko-KR';
+  String _elevenLabsApiKey = '';
+  String _elevenLabsFrontVoiceId = '';
+  String _elevenLabsBackVoiceId = '';
+  String _elevenLabsModelId = 'eleven_flash_v2_5';
   Map<String, String>? _frontVoice;
   Map<String, String>? _backVoice;
   List<Map<String, String>> _availableVoices = [];
@@ -74,6 +88,7 @@ class _PhotoStudyScreenState extends State<PhotoStudyScreen> {
   @override
   void dispose() {
     _autoPlay = false;
+    _audioPlayer.dispose();
     if (_ttsEnabled) {
       _tts.stop();
     }
@@ -82,6 +97,7 @@ class _PhotoStudyScreenState extends State<PhotoStudyScreen> {
 
   Future<void> _speakSpanish() async {
     await _speak(
+      side: _TtsSide.front,
       text: _card.spanishText,
       language: _frontLanguage,
       voice: _frontVoice,
@@ -90,6 +106,7 @@ class _PhotoStudyScreenState extends State<PhotoStudyScreen> {
 
   Future<void> _speakKorean() async {
     await _speak(
+      side: _TtsSide.back,
       text: _card.koreanText,
       language: _backLanguage,
       voice: _backVoice,
@@ -97,6 +114,7 @@ class _PhotoStudyScreenState extends State<PhotoStudyScreen> {
   }
 
   Future<void> _speak({
+    required _TtsSide side,
     required String text,
     required String language,
     required Map<String, String>? voice,
@@ -106,17 +124,84 @@ class _PhotoStudyScreenState extends State<PhotoStudyScreen> {
     if (spoken.isEmpty || _speaking) return;
     setState(() => _speaking = true);
     try {
-      await _applyTtsVoice(language: language, voice: voice);
-      await _tts.setSpeechRate(_ttsSpeed);
       for (var i = 0; i < _repeatCount; i += 1) {
         if (!mounted) return;
-        await _tts.speak(spoken);
+        final playedByElevenLabs = await _tryPlayElevenLabs(
+          side: side,
+          text: spoken,
+        );
+        if (!playedByElevenLabs) {
+          await _applyTtsVoice(language: language, voice: voice);
+          await _tts.setSpeechRate(_ttsSpeed);
+          await _tts.speak(spoken);
+        }
         if (i < _repeatCount - 1) {
           await Future.delayed(const Duration(milliseconds: 350));
         }
       }
     } finally {
       if (mounted) setState(() => _speaking = false);
+    }
+  }
+
+  Future<bool> _tryPlayElevenLabs({
+    required _TtsSide side,
+    required String text,
+  }) async {
+    if (!_useElevenLabs) return false;
+    final apiKey = _elevenLabsApiKey.trim();
+    final voiceId = side == _TtsSide.front
+        ? _elevenLabsFrontVoiceId.trim()
+        : _elevenLabsBackVoiceId.trim();
+    if (apiKey.isEmpty || voiceId.isEmpty) return false;
+
+    final card = _card;
+    var relativePath =
+        side == _TtsSide.front ? card.audioFrontPath : card.audioBackPath;
+    var absolutePath = side == _TtsSide.front
+        ? card.audioFrontAbsolutePath
+        : card.audioBackAbsolutePath;
+
+    try {
+      if (absolutePath == null ||
+          absolutePath.isEmpty ||
+          !await File(absolutePath).exists()) {
+        if (mounted) setState(() => _generatingAudio = true);
+        final generated = await _elevenLabs.generateAndStore(
+          apiKey: apiKey,
+          voiceId: voiceId,
+          modelId: _elevenLabsModelId,
+          termId: card.termId,
+          side: side == _TtsSide.front ? 'front' : 'back',
+          text: text,
+        );
+        relativePath = generated.relativePath;
+        absolutePath = generated.absolutePath;
+        await _repo.updateCardAudioPath(
+          termId: card.termId,
+          front: side == _TtsSide.front,
+          relativePath: relativePath,
+        );
+        final updatedCard = side == _TtsSide.front
+            ? card.copyWith(
+                audioFrontPath: relativePath,
+                audioFrontAbsolutePath: absolutePath,
+              )
+            : card.copyWith(
+                audioBackPath: relativePath,
+                audioBackAbsolutePath: absolutePath,
+              );
+        widget.cards[_cardIndex] = updatedCard;
+      }
+
+      await _audioPlayer.setFilePath(absolutePath);
+      await _audioPlayer.play();
+      return true;
+    } catch (e) {
+      debugPrint('ElevenLabs playback failed, falling back to native TTS: $e');
+      return false;
+    } finally {
+      if (mounted) setState(() => _generatingAudio = false);
     }
   }
 
@@ -174,6 +259,7 @@ class _PhotoStudyScreenState extends State<PhotoStudyScreen> {
     if (_autoPlay) {
       await _runAutoPlay();
     } else {
+      await _audioPlayer.stop();
       await _tts.stop();
     }
   }
@@ -252,6 +338,17 @@ class _PhotoStudyScreenState extends State<PhotoStudyScreen> {
           prefs.getString('backLanguage') ??
           _backLanguage;
       _autoPlay = prefs.getBool('photoTtsAutoPlay') ?? _autoPlay;
+      _useElevenLabs = prefs.getBool('photoTtsUseElevenLabs') ?? _useElevenLabs;
+      _elevenLabsApiKey =
+          prefs.getString('photoTtsElevenLabsApiKey') ?? _elevenLabsApiKey;
+      _elevenLabsFrontVoiceId =
+          prefs.getString('photoTtsElevenLabsFrontVoiceId') ??
+              _elevenLabsFrontVoiceId;
+      _elevenLabsBackVoiceId =
+          prefs.getString('photoTtsElevenLabsBackVoiceId') ??
+              _elevenLabsBackVoiceId;
+      _elevenLabsModelId =
+          prefs.getString('photoTtsElevenLabsModelId') ?? _elevenLabsModelId;
     });
   }
 
@@ -270,6 +367,17 @@ class _PhotoStudyScreenState extends State<PhotoStudyScreen> {
     await prefs.setString(
         'photoTtsBackVoiceLocale', _backVoice?['locale'] ?? '');
     await prefs.setBool('photoTtsAutoPlay', _autoPlay);
+    await prefs.setBool('photoTtsUseElevenLabs', _useElevenLabs);
+    await prefs.setString('photoTtsElevenLabsApiKey', _elevenLabsApiKey);
+    await prefs.setString(
+      'photoTtsElevenLabsFrontVoiceId',
+      _elevenLabsFrontVoiceId,
+    );
+    await prefs.setString(
+      'photoTtsElevenLabsBackVoiceId',
+      _elevenLabsBackVoiceId,
+    );
+    await prefs.setString('photoTtsElevenLabsModelId', _elevenLabsModelId);
   }
 
   Future<void> _loadAvailableVoices() async {
@@ -414,6 +522,11 @@ class _PhotoStudyScreenState extends State<PhotoStudyScreen> {
       'French': 'fr-FR',
       'German': 'de-DE',
     };
+    final apiKeyController = TextEditingController(text: _elevenLabsApiKey);
+    final frontVoiceIdController =
+        TextEditingController(text: _elevenLabsFrontVoiceId);
+    final backVoiceIdController =
+        TextEditingController(text: _elevenLabsBackVoiceId);
 
     await showModalBottomSheet<void>(
       context: context,
@@ -451,6 +564,78 @@ class _PhotoStudyScreenState extends State<PhotoStudyScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('ElevenLabs 고품질 음성'),
+                        subtitle: const Text('생성된 mp3는 로컬에 저장됩니다.'),
+                        value: _useElevenLabs,
+                        onChanged: !_ttsEnabled
+                            ? null
+                            : (value) {
+                                refresh(() => _useElevenLabs = value);
+                              },
+                      ),
+                      if (_useElevenLabs) ...[
+                        TextField(
+                          controller: apiKeyController,
+                          obscureText: true,
+                          decoration: const InputDecoration(
+                            labelText: 'ElevenLabs API Key',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (value) {
+                            _elevenLabsApiKey = value.trim();
+                            _saveTtsSettings();
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: frontVoiceIdController,
+                          decoration: const InputDecoration(
+                            labelText: '스페인어 Voice ID',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (value) {
+                            _elevenLabsFrontVoiceId = value.trim();
+                            _saveTtsSettings();
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: backVoiceIdController,
+                          decoration: const InputDecoration(
+                            labelText: '한국어 Voice ID',
+                            border: OutlineInputBorder(),
+                          ),
+                          onChanged: (value) {
+                            _elevenLabsBackVoiceId = value.trim();
+                            _saveTtsSettings();
+                          },
+                        ),
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          value: _elevenLabsModelId,
+                          decoration: const InputDecoration(
+                            labelText: 'ElevenLabs 모델',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: const [
+                            DropdownMenuItem<String>(
+                              value: 'eleven_flash_v2_5',
+                              child: Text('Flash v2.5'),
+                            ),
+                            DropdownMenuItem<String>(
+                              value: 'eleven_multilingual_v2',
+                              child: Text('Multilingual v2'),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            if (value == null) return;
+                            refresh(() => _elevenLabsModelId = value);
+                          },
+                        ),
+                        const Divider(height: 28),
+                      ],
                       SwitchListTile(
                         contentPadding: EdgeInsets.zero,
                         title: const Text('자동 재생'),
@@ -641,6 +826,10 @@ class _PhotoStudyScreenState extends State<PhotoStudyScreen> {
         );
       },
     );
+
+    apiKeyController.dispose();
+    frontVoiceIdController.dispose();
+    backVoiceIdController.dispose();
   }
 
   @override
@@ -715,10 +904,21 @@ class _PhotoStudyScreenState extends State<PhotoStudyScreen> {
                   ),
                   const SizedBox(width: 8),
                   IconButton.filledTonal(
-                    tooltip: _stage == 2 ? '한국어 다시 듣기' : '스페인어 다시 듣기',
-                    onPressed:
-                        !_ttsEnabled || _speaking ? null : _replayCurrentStage,
-                    icon: Icon(_speaking ? Icons.volume_up : Icons.hearing),
+                    tooltip: _generatingAudio
+                        ? 'ElevenLabs 음성 생성 중'
+                        : _stage == 2
+                            ? '한국어 다시 듣기'
+                            : '스페인어 다시 듣기',
+                    onPressed: !_ttsEnabled || _speaking || _generatingAudio
+                        ? null
+                        : _replayCurrentStage,
+                    icon: _generatingAudio
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(_speaking ? Icons.volume_up : Icons.hearing),
                   ),
                   const SizedBox(width: 8),
                   IconButton.filledTonal(

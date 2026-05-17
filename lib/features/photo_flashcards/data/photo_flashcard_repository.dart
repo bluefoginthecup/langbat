@@ -196,6 +196,14 @@ class PhotoFlashcardRepository {
           thumbnailAbsolutePath: thumbPath == null
               ? null
               : (await paths.resolveAppFile(thumbPath)).path,
+          audioFrontPath: term.audioFrontPath,
+          audioFrontAbsolutePath: term.audioFrontPath == null
+              ? null
+              : (await paths.resolveAppFile(term.audioFrontPath!)).path,
+          audioBackPath: term.audioBackPath,
+          audioBackAbsolutePath: term.audioBackPath == null
+              ? null
+              : (await paths.resolveAppFile(term.audioBackPath!)).path,
           order: item.sortOrder,
           createdAt: DateTime.parse(term.createdAt),
           updatedAt: DateTime.parse(term.updatedAt),
@@ -215,6 +223,21 @@ class PhotoFlashcardRepository {
       TermsCompanion(
         frontText: Value(spanishText.trim()),
         backText: Value(koreanText.trim()),
+        updatedAt: Value(now),
+      ),
+    );
+  }
+
+  Future<void> updateCardAudioPath({
+    required String termId,
+    required bool front,
+    required String relativePath,
+  }) async {
+    final now = DateTime.now().toUtc().toIso8601String();
+    await (db.update(db.terms)..where((tbl) => tbl.id.equals(termId))).write(
+      TermsCompanion(
+        audioFrontPath: front ? Value(relativePath) : const Value.absent(),
+        audioBackPath: front ? const Value.absent() : Value(relativePath),
         updatedAt: Value(now),
       ),
     );
